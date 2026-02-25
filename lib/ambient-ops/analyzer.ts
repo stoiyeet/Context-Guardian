@@ -198,10 +198,15 @@ function sanitizedInput(input: IncidentInput): IncidentInput {
     ...input,
     errorText: input.errorText.trim(),
     userDescription: input.userDescription?.trim() || undefined,
+    workerId: input.workerId?.trim() || undefined,
     terminalHistory: (input.terminalHistory ?? [])
       .map((line) => line.trim())
       .filter(Boolean)
       .slice(-MAX_TERMINAL_HISTORY),
+    workerContextNotes: (input.workerContextNotes ?? [])
+      .map((note) => note.trim())
+      .filter(Boolean)
+      .slice(-12),
   };
 }
 
@@ -209,10 +214,12 @@ function buildCombinedInputText(input: IncidentInput): string {
   return [
     `error: ${input.errorText}`,
     input.userDescription ? `description: ${input.userDescription}` : "",
+    input.workerId ? `worker: ${input.workerId}` : "",
     `component: ${input.component}`,
     `environment: ${input.environment}`,
     `surface: ${input.surface}`,
     ...(input.terminalHistory ?? []).map((line) => `history: ${line}`),
+    ...(input.workerContextNotes ?? []).map((note) => `worker-context: ${note}`),
   ]
     .filter(Boolean)
     .join("\n");
@@ -582,7 +589,8 @@ export async function analyzeIncident(input: IncidentInput): Promise<AnalysisRes
       surface: cleanedInput.surface,
       terminalHistory: cleanedInput.terminalHistory ?? [],
       userDescription: cleanedInput.userDescription,
+      workerId: cleanedInput.workerId,
+      workerContextNotes: cleanedInput.workerContextNotes ?? [],
     },
   };
 }
-

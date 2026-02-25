@@ -45,6 +45,8 @@ export async function POST(request: Request) {
       surface: parseSurface(body.surface),
       userDescription: asString(body.userDescription).trim() || undefined,
       terminalHistory: asStringArray(body.terminalHistory),
+      workerId: asString(body.workerId).trim() || undefined,
+      workerContextNotes: asStringArray(body.workerContextNotes),
     };
 
     const analysis = await analyzeIncident(input);
@@ -55,4 +57,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

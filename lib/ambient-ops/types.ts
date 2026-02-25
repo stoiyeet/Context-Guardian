@@ -67,6 +67,8 @@ export interface IncidentInput {
   surface: ExecutionSurface;
   userDescription?: string;
   terminalHistory?: string[];
+  workerId?: string;
+  workerContextNotes?: string[];
 }
 
 export interface IncidentClassification {
@@ -117,6 +119,7 @@ export interface AnalysisResponse {
     surface: ExecutionSurface;
     terminalHistory: string[];
     userDescription?: string;
+    workerId?: string;
+    workerContextNotes?: string[];
   };
 }
-
