@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   type JiraArtifact,
   type KnowledgeArtifact,
-  type KnowledgeSourceType,
   type PostMortemArtifact,
   type SlackConversationArtifact,
   listKnowledgeArtifacts,
@@ -11,13 +10,9 @@ import {
 type KnowledgeBasePageProps = {
   searchParams?: {
     artifact?: string;
+    message?: string;
+    entry?: string;
   };
-};
-
-const TYPE_LABELS: Record<KnowledgeSourceType, string> = {
-  slack: "Slack",
-  jira: "Jira",
-  postmortem: "Post-Mortems",
 };
 
 function initials(name: string): string {
@@ -29,7 +24,7 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-function renderSlack(artifact: SlackConversationArtifact) {
+function renderSlack(artifact: SlackConversationArtifact, highlightedMessageId?: string) {
   const groupedByDate = artifact.messages.reduce<Record<string, typeof artifact.messages>>(
     (acc, message) => {
       if (!acc[message.dateLabel]) {
@@ -41,49 +36,36 @@ function renderSlack(artifact: SlackConversationArtifact) {
     {},
   );
 
-  const participants = Array.from(
-    new Map(artifact.messages.map((message) => [message.sender, message.role])).entries(),
-  ).map(([name, role]) => ({ name, role }));
-
   return (
     <>
       <header className="kb-article-header">
         <p className="kb-chip">Slack</p>
-        <h1>{artifact.title}</h1>
-        <p className="kb-subtle">#{artifact.channel}</p>
+        <h1>#{artifact.channel}</h1>
+        <p className="kb-subtle">{artifact.title}</p>
       </header>
 
-      <div className="kb-slack-app">
-        <div className="kb-slack-toolbar">
-          <div>
-            <p className="kb-slack-workspace">FinOps Incident Workspace</p>
-            <p className="kb-slack-channel">#{artifact.channel}</p>
-          </div>
-          <p className="kb-slack-count">{artifact.messages.length} messages</p>
+      <section className="kb-slack-app">
+        <div className="kb-slack-topbar">
+          <p>
+            <strong>FinOps Ops Workspace</strong>
+            <span>Thread replay | read-only</span>
+          </p>
+          <p>{artifact.messages.length} messages</p>
         </div>
 
-        <div className="kb-slack-layout">
-          <aside className="kb-slack-nav">
-            <p className="kb-slack-nav-title">Channels</p>
-            <p className="kb-slack-nav-item active">#ops-transfers-incidents</p>
-            <p className="kb-slack-nav-item">#ops-transfer-failures</p>
-            <p className="kb-slack-nav-item">#clearing-escalations</p>
+        <div className="kb-slack-feed-scroll">
+          {Object.entries(groupedByDate).map(([dateLabel, messages]) => (
+            <section key={dateLabel} className="kb-message-group">
+              <p className="kb-date-divider">{dateLabel}</p>
+              {messages.map((message) => {
+                const isHighlighted = highlightedMessageId === message.id;
 
-            <p className="kb-slack-nav-title">Participants</p>
-            {participants.map((participant) => (
-              <p key={participant.name} className="kb-slack-participant">
-                <span>{participant.name}</span>
-                <small>{participant.role}</small>
-              </p>
-            ))}
-          </aside>
-
-          <section className="kb-slack-feed">
-            {Object.entries(groupedByDate).map(([dateLabel, messages]) => (
-              <section key={dateLabel} className="kb-message-group">
-                <p className="kb-date-divider">{dateLabel}</p>
-                {messages.map((message) => (
-                  <article key={message.id} className="kb-slack-message">
+                return (
+                  <article
+                    key={message.id}
+                    id={message.id}
+                    className={`kb-slack-message ${isHighlighted ? "kb-target-entry" : ""}`}
+                  >
                     <div className="kb-avatar">{initials(message.sender)}</div>
                     <div className="kb-slack-message-body">
                       <p className="kb-slack-message-meta">
@@ -93,22 +75,20 @@ function renderSlack(artifact: SlackConversationArtifact) {
                           {new Date(message.timestamp).toLocaleTimeString("en-US")}
                         </span>
                       </p>
-                      <div className="kb-slack-bubble">
-                        <p className="kb-message-text">{message.body}</p>
-                      </div>
+                      <p className="kb-message-text">{message.body}</p>
                     </div>
                   </article>
-                ))}
-              </section>
-            ))}
-          </section>
+                );
+              })}
+            </section>
+          ))}
         </div>
-      </div>
+      </section>
     </>
   );
 }
 
-function renderJira(artifact: JiraArtifact) {
+function renderJira(artifact: JiraArtifact, highlightedEntry?: string) {
   return (
     <>
       <header className="kb-article-header">
@@ -142,7 +122,11 @@ function renderJira(artifact: JiraArtifact) {
       <section className="kb-comments">
         <h2>Comments</h2>
         {artifact.comments.map((comment) => (
-          <article key={comment.id} className="kb-comment-row">
+          <article
+            key={comment.id}
+            id={comment.id}
+            className={`kb-comment-row ${highlightedEntry === comment.id ? "kb-target-entry" : ""}`}
+          >
             <p className="kb-comment-meta">
               <span>{comment.author}</span>
               <span>{comment.role}</span>
@@ -179,13 +163,17 @@ function renderPostMortem(artifact: PostMortemArtifact) {
   );
 }
 
-function renderArtifact(artifact: KnowledgeArtifact) {
+function renderArtifact(
+  artifact: KnowledgeArtifact,
+  highlightedMessageId?: string,
+  highlightedEntry?: string,
+) {
   if (artifact.type === "slack") {
-    return renderSlack(artifact);
+    return renderSlack(artifact, highlightedMessageId);
   }
 
   if (artifact.type === "jira") {
-    return renderJira(artifact);
+    return renderJira(artifact, highlightedEntry);
   }
 
   return renderPostMortem(artifact);
@@ -193,46 +181,39 @@ function renderArtifact(artifact: KnowledgeArtifact) {
 
 export default function KnowledgeBasePage({ searchParams }: KnowledgeBasePageProps) {
   const artifacts = listKnowledgeArtifacts();
-  const selectedId = searchParams?.artifact;
+  const selectedArtifactId = searchParams?.artifact;
+  const highlightedMessageId = searchParams?.message;
+  const highlightedEntry = searchParams?.entry;
   const selectedArtifact =
-    artifacts.find((artifact) => artifact.id === selectedId) ?? artifacts[0] ?? null;
-
-  const groupedArtifacts: Record<KnowledgeSourceType, KnowledgeArtifact[]> = {
-    slack: artifacts.filter((artifact) => artifact.type === "slack"),
-    jira: artifacts.filter((artifact) => artifact.type === "jira"),
-    postmortem: artifacts.filter((artifact) => artifact.type === "postmortem"),
-  };
+    artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? artifacts[0] ?? null;
 
   if (!selectedArtifact) {
     return null;
   }
 
   return (
-    <main className="kb-shell">
-      <aside className="kb-sidebar">
-        <Link href="/" className="kb-back-link">
-          Context Guardian
+    <main className="kb-page">
+      <header className="kb-topbar">
+        <Link href="/" className="kb-back-main">
+          Back To Dashboard
         </Link>
 
-        {(Object.keys(groupedArtifacts) as KnowledgeSourceType[]).map((type) => (
-          <section key={type} className="kb-sidebar-group">
-            <p className="kb-sidebar-heading">{TYPE_LABELS[type]}</p>
-            {groupedArtifacts[type].map((artifact) => (
-              <Link
-                key={artifact.id}
-                href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
-                className={`kb-sidebar-item ${artifact.id === selectedArtifact.id ? "active" : ""}`}
-              >
-                {artifact.type === "jira" ? artifact.ticketKey : artifact.title}
-              </Link>
-            ))}
-          </section>
-        ))}
-      </aside>
+        <div className="kb-source-tabs">
+          {artifacts.map((artifact) => (
+            <Link
+              key={artifact.id}
+              href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
+              className={`kb-source-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
+            >
+              {artifact.type === "jira" ? artifact.ticketKey : artifact.type}
+            </Link>
+          ))}
+        </div>
+      </header>
 
-      <section className="kb-main">
+      <section className="kb-main-single">
         <article id={selectedArtifact.id} className="kb-article kb-highlight-target">
-          {renderArtifact(selectedArtifact)}
+          {renderArtifact(selectedArtifact, highlightedMessageId, highlightedEntry)}
         </article>
       </section>
     </main>

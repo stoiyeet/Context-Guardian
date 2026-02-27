@@ -15,21 +15,21 @@ type TicketUiState = {
 };
 
 type EvidenceLink = {
-  id: string;
+  href: string;
   label: string;
 };
 
 const EVIDENCE_LINKS: EvidenceLink[] = [
   {
-    id: "slack-nov-2024",
+    href: "/knowledge-base?artifact=slack-nov-2024&message=m5#m5",
     label: "Slack thread Nov 2024",
   },
   {
-    id: "jira-ops-8492",
+    href: "/knowledge-base?artifact=jira-ops-8492#jira-ops-8492",
     label: "OPS-8492",
   },
   {
-    id: "postmortem-cusip-2024-11",
+    href: "/knowledge-base?artifact=postmortem-cusip-2024-11#postmortem-cusip-2024-11",
     label: "post-mortem",
   },
 ];
@@ -63,6 +63,12 @@ function initializeUiState(ticket: OpsTicket): TicketUiState {
 
 function getPayload(ticket: OpsTicket): string | null {
   return ticket.resolutionSteps.find((step) => step.payloadJson)?.payloadJson ?? null;
+}
+
+function activeContributors(ticket: OpsTicket): string[] {
+  return ticket.smes
+    .filter((sme) => sme.status === "Active")
+    .map((sme) => `${sme.name} (${sme.role})`);
 }
 
 export default function ContextGuardianDashboard() {
@@ -137,6 +143,8 @@ export default function ContextGuardianDashboard() {
   const selectedReady = Boolean(selectedTicket && isReady(selectedTicket));
   const selectedPayload = selectedTicket ? getPayload(selectedTicket) : null;
   const modalPayload = modalTicket ? getPayload(modalTicket) : null;
+  const selectedContributors = selectedTicket ? activeContributors(selectedTicket) : [];
+  const modalContributors = modalTicket ? activeContributors(modalTicket) : [];
 
   const setStepReviewed = useCallback((ticketId: string, stepId: string, value: boolean) => {
     setTicketUi((previous) => {
@@ -282,8 +290,8 @@ export default function ContextGuardianDashboard() {
               <p className="evidence-sentence">
                 This diagnosis draws from 3 sources:{" "}
                 {EVIDENCE_LINKS.map((link, index) => (
-                  <span key={link.id}>
-                    <Link href={`/knowledge-base?artifact=${link.id}#${link.id}`} className="evidence-link">
+                  <span key={link.href}>
+                    <Link href={link.href} className="evidence-link">
                       [{link.label}]
                     </Link>
                     {index < EVIDENCE_LINKS.length - 1 ? ", " : "."}
@@ -364,6 +372,12 @@ export default function ContextGuardianDashboard() {
                 </div>
               )}
 
+              {selectedContributors.length > 0 && (
+                <p className="active-contributors">
+                  Prior active contributors: {selectedContributors.join(", ")}.
+                </p>
+              )}
+
               <button
                 type="button"
                 className="authorize-button"
@@ -427,8 +441,8 @@ export default function ContextGuardianDashboard() {
               <p className="evidence-sentence">
                 This diagnosis draws from 3 sources:{" "}
                 {EVIDENCE_LINKS.map((link, index) => (
-                  <span key={link.id}>
-                    <Link href={`/knowledge-base?artifact=${link.id}#${link.id}`} className="evidence-link">
+                  <span key={link.href}>
+                    <Link href={link.href} className="evidence-link">
                       [{link.label}]
                     </Link>
                     {index < EVIDENCE_LINKS.length - 1 ? ", " : "."}
@@ -479,6 +493,12 @@ export default function ContextGuardianDashboard() {
                   </div>
                   <pre>{modalPayload}</pre>
                 </div>
+              )}
+
+              {modalContributors.length > 0 && (
+                <p className="active-contributors">
+                  Prior active contributors: {modalContributors.join(", ")}.
+                </p>
               )}
 
               <button
