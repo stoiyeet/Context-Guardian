@@ -67,7 +67,9 @@ pre {
   overflow: hidden;
 }
 
-.panel-left {
+.panel-left,
+.panel-center,
+.panel-right {
   display: flex;
   flex-direction: column;
 }
@@ -108,17 +110,21 @@ pre {
   color: var(--text-main);
   text-align: left;
   padding: 10px;
-  cursor: default;
+  cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
 }
 
-.event-card-ready {
-  cursor: pointer;
+.event-card:hover {
+  border-color: #576270;
+}
+
+.event-card-selected {
+  border-color: var(--amber);
+  background: #1d2329;
 }
 
 .event-card-ready:hover {
   border-color: var(--amber);
-  background: #1b2127;
 }
 
 .event-id {
@@ -182,6 +188,14 @@ pre {
   gap: 14px;
   color: var(--text-dim);
   font-size: 14px;
+  text-align: center;
+  padding: 20px;
+}
+
+.waiting-subtle {
+  margin: 0;
+  max-width: 320px;
+  font-size: 12px;
 }
 
 .heartbeat {
@@ -189,6 +203,235 @@ pre {
   height: 8px;
   background: var(--amber);
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+.panel-content {
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-block {
+  border: 1px solid #313942;
+  background: #151b21;
+  padding: 12px;
+}
+
+.section-tag {
+  margin: 0;
+  color: var(--amber);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.summary-metric {
+  margin: 8px 0 4px;
+  font-family: var(--font-data);
+  font-size: 34px;
+  color: #ffe2a4;
+}
+
+.summary-claim {
+  margin: 0;
+  color: #f2cc88;
+  font-size: 12px;
+}
+
+.summary-time-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.summary-time-grid p {
+  margin: 0;
+  border: 1px solid #3a4450;
+  background: #12171c;
+  padding: 8px;
+}
+
+.summary-time-grid span {
+  display: block;
+  color: #a7b0bb;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.summary-time-grid strong {
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.raw-code {
+  margin: 8px 0;
+  font-family: var(--font-data);
+  color: #9099a4;
+  font-size: 12px;
+}
+
+.diagnosis-text-inline {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.diagnosis-text {
+  margin: 0;
+  max-width: 880px;
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.evidence-sentence {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.evidence-link {
+  color: #f8c562;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(248, 197, 98, 0.5);
+}
+
+.evidence-link:hover {
+  color: #ffe2a5;
+}
+
+.node-chain {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.node-chain span {
+  border: 1px solid #424b55;
+  background: #10151a;
+  padding: 5px 8px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: #d6dce2;
+}
+
+.node-chain i {
+  width: 28px;
+  height: 1px;
+  background: #5a646f;
+  display: inline-block;
+}
+
+.open-modal-button,
+.close-button,
+.payload-header button,
+.authorize-button {
+  border: 1px solid #4c5661;
+  background: #1c232b;
+  color: #d8dee5;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.open-modal-button {
+  margin-top: 12px;
+}
+
+.open-modal-button:hover,
+.close-button:hover,
+.payload-header button:hover {
+  border-color: #65717e;
+  background: #232b34;
+}
+
+.resolution-steps {
+  margin: 10px 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resolution-steps li label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.resolution-steps input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: var(--amber);
+}
+
+.payload-wrap {
+  border: 1px solid #3c454f;
+  background: #0e1318;
+  margin: 12px 0;
+}
+
+.payload-header {
+  border-bottom: 1px solid #3c454f;
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: #b5bec8;
+}
+
+.payload-wrap pre {
+  margin: 0;
+  padding: 10px;
+  overflow-x: auto;
+  font-family: var(--font-data);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.authorize-button {
+  border-color: #b67d00;
+  background: var(--amber);
+  color: #0e0f11;
+  font-weight: 700;
+}
+
+.authorize-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.confidence-block {
+  border-color: #38414a;
+}
+
+.confidence-label {
+  margin: 8px 0;
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: #d4dae2;
+}
+
+.confidence-track {
+  height: 10px;
+  border: 1px solid #44505d;
+  background: #090d10;
+}
+
+.confidence-value {
+  height: 100%;
+  background: linear-gradient(90deg, #9d6d08 0%, #f0a500 70%, #ffd985 100%);
 }
 
 .blueprint-overlay {
@@ -225,36 +468,9 @@ pre {
   color: #cad1d9;
 }
 
-.close-button,
-.payload-header button,
-.authorize-button {
-  border: 1px solid #4c5661;
-  background: #1c232b;
-  color: #d8dee5;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 11px;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-.close-button:hover,
-.payload-header button:hover {
-  border-color: #65717e;
-  background: #232b34;
-}
-
 .blueprint-section {
   border-bottom: 1px solid #2e353d;
   padding: 16px 18px;
-}
-
-.section-tag {
-  margin: 0;
-  color: var(--amber);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 11px;
 }
 
 .timestamp-focus {
@@ -301,119 +517,6 @@ pre {
   margin: 10px 0 0;
   color: #f4d191;
   font-size: 12px;
-}
-
-.raw-code {
-  margin: 10px 0 8px;
-  font-family: var(--font-data);
-  color: #919aa4;
-  font-size: 12px;
-}
-
-.diagnosis-text {
-  margin: 0;
-  max-width: 880px;
-  font-size: 24px;
-  line-height: 1.35;
-}
-
-.evidence-sentence {
-  margin: 10px 0 0;
-  font-size: 15px;
-  line-height: 1.55;
-}
-
-.evidence-link {
-  color: #f8c562;
-  text-decoration: none;
-  border-bottom: 1px solid rgba(248, 197, 98, 0.5);
-}
-
-.evidence-link:hover {
-  color: #ffe2a5;
-}
-
-.node-chain {
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.node-chain span {
-  border: 1px solid #424b55;
-  background: #10151a;
-  padding: 5px 8px;
-  font-family: var(--font-data);
-  font-size: 11px;
-  color: #d6dce2;
-}
-
-.node-chain i {
-  width: 28px;
-  height: 1px;
-  background: #5a646f;
-  display: inline-block;
-}
-
-.resolution-steps {
-  margin: 10px 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.resolution-steps li label {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.resolution-steps input[type="checkbox"] {
-  margin-top: 3px;
-  accent-color: var(--amber);
-}
-
-.payload-wrap {
-  border: 1px solid #3c454f;
-  background: #0e1318;
-  margin: 12px 0;
-}
-
-.payload-header {
-  border-bottom: 1px solid #3c454f;
-  padding: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-data);
-  font-size: 11px;
-  color: #b5bec8;
-}
-
-.payload-wrap pre {
-  margin: 0;
-  padding: 10px;
-  overflow-x: auto;
-  font-family: var(--font-data);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.authorize-button {
-  border-color: #b67d00;
-  background: var(--amber);
-  color: #0e0f11;
-  font-weight: 700;
-}
-
-.authorize-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .kb-shell {
@@ -506,10 +609,95 @@ pre {
   font-size: 13px;
 }
 
-.kb-slack-thread {
-  margin-top: 16px;
-  border-top: 1px solid #4c4136;
-  padding-top: 12px;
+.kb-slack-app {
+  margin-top: 14px;
+  border: 1px solid #4f4237;
+  background: #18120d;
+}
+
+.kb-slack-toolbar {
+  border-bottom: 1px solid #4f4237;
+  background: #211910;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.kb-slack-workspace {
+  margin: 0;
+  color: #f0dbc0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kb-slack-channel {
+  margin: 3px 0 0;
+  color: #ceb79c;
+  font-size: 12px;
+}
+
+.kb-slack-count {
+  margin: 0;
+  color: #c6af93;
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+
+.kb-slack-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 440px;
+}
+
+.kb-slack-nav {
+  border-right: 1px solid #4f4237;
+  background: #20180f;
+  padding: 10px;
+}
+
+.kb-slack-nav-title {
+  margin: 0 0 7px;
+  color: #e1c59f;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kb-slack-nav-item {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  color: #d8c6af;
+  font-size: 12px;
+}
+
+.kb-slack-nav-item.active {
+  border-color: #7d6548;
+  background: #2a2016;
+}
+
+.kb-slack-participant {
+  margin: 0 0 5px;
+  padding: 5px 7px;
+  border: 1px solid #564733;
+  background: #2a2016;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e2d0ba;
+  font-size: 12px;
+}
+
+.kb-slack-participant small {
+  color: #bea78b;
+  font-size: 11px;
+}
+
+.kb-slack-feed {
+  padding: 12px;
+  background: #1d150f;
 }
 
 .kb-message-group {
@@ -525,7 +713,7 @@ pre {
   letter-spacing: 0.06em;
 }
 
-.kb-message-row {
+.kb-slack-message {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 10px;
@@ -536,32 +724,57 @@ pre {
   width: 34px;
   height: 34px;
   border: 1px solid #5e5042;
-  background: #2b241d;
-  color: #e8d8c4;
+  background: #31261b;
+  color: #f0dfc9;
   display: grid;
   place-items: center;
   font-family: var(--font-data);
   font-size: 11px;
 }
 
-.kb-message-meta {
+.kb-slack-message-body {
+  min-width: 0;
+}
+
+.kb-slack-message-meta {
   margin: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: #cab9a5;
-  font-size: 12px;
+  align-items: center;
 }
 
-.kb-message-meta span:first-child {
-  color: #f1e3d1;
+.kb-slack-message-meta .name {
+  color: #f2e2cc;
   font-weight: 600;
+  font-size: 13px;
+}
+
+.kb-slack-message-meta .role {
+  border: 1px solid #63513d;
+  color: #d6bea1;
+  padding: 1px 6px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.kb-slack-message-meta .time {
+  color: #c5af95;
+  font-size: 11px;
+}
+
+.kb-slack-bubble {
+  margin-top: 5px;
+  border: 1px solid #5a4935;
+  background: #2a1f14;
+  padding: 8px 9px;
 }
 
 .kb-message-text {
-  margin: 4px 0 0;
-  color: #e5d8ca;
-  line-height: 1.45;
+  margin: 0;
+  color: #eadccf;
+  line-height: 1.5;
 }
 
 .kb-jira-meta {
@@ -669,5 +882,14 @@ pre {
 
   .blueprint-modal {
     height: calc(100vh - 16px);
+  }
+
+  .kb-slack-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .kb-slack-nav {
+    border-right: 0;
+    border-bottom: 1px solid #4f4237;
   }
 }

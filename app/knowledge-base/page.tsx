@@ -41,6 +41,10 @@ function renderSlack(artifact: SlackConversationArtifact) {
     {},
   );
 
+  const participants = Array.from(
+    new Map(artifact.messages.map((message) => [message.sender, message.role])).entries(),
+  ).map(([name, role]) => ({ name, role }));
+
   return (
     <>
       <header className="kb-article-header">
@@ -49,25 +53,56 @@ function renderSlack(artifact: SlackConversationArtifact) {
         <p className="kb-subtle">#{artifact.channel}</p>
       </header>
 
-      <div className="kb-slack-thread">
-        {Object.entries(groupedByDate).map(([dateLabel, messages]) => (
-          <section key={dateLabel} className="kb-message-group">
-            <p className="kb-date-divider">{dateLabel}</p>
-            {messages.map((message) => (
-              <article key={message.id} className="kb-message-row">
-                <div className="kb-avatar">{initials(message.sender)}</div>
-                <div className="kb-message-body">
-                  <p className="kb-message-meta">
-                    <span>{message.sender}</span>
-                    <span>{message.role}</span>
-                    <span>{new Date(message.timestamp).toLocaleTimeString("en-US")}</span>
-                  </p>
-                  <p className="kb-message-text">{message.body}</p>
-                </div>
-              </article>
+      <div className="kb-slack-app">
+        <div className="kb-slack-toolbar">
+          <div>
+            <p className="kb-slack-workspace">FinOps Incident Workspace</p>
+            <p className="kb-slack-channel">#{artifact.channel}</p>
+          </div>
+          <p className="kb-slack-count">{artifact.messages.length} messages</p>
+        </div>
+
+        <div className="kb-slack-layout">
+          <aside className="kb-slack-nav">
+            <p className="kb-slack-nav-title">Channels</p>
+            <p className="kb-slack-nav-item active">#ops-transfers-incidents</p>
+            <p className="kb-slack-nav-item">#ops-transfer-failures</p>
+            <p className="kb-slack-nav-item">#clearing-escalations</p>
+
+            <p className="kb-slack-nav-title">Participants</p>
+            {participants.map((participant) => (
+              <p key={participant.name} className="kb-slack-participant">
+                <span>{participant.name}</span>
+                <small>{participant.role}</small>
+              </p>
+            ))}
+          </aside>
+
+          <section className="kb-slack-feed">
+            {Object.entries(groupedByDate).map(([dateLabel, messages]) => (
+              <section key={dateLabel} className="kb-message-group">
+                <p className="kb-date-divider">{dateLabel}</p>
+                {messages.map((message) => (
+                  <article key={message.id} className="kb-slack-message">
+                    <div className="kb-avatar">{initials(message.sender)}</div>
+                    <div className="kb-slack-message-body">
+                      <p className="kb-slack-message-meta">
+                        <span className="name">{message.sender}</span>
+                        <span className="role">{message.role}</span>
+                        <span className="time">
+                          {new Date(message.timestamp).toLocaleTimeString("en-US")}
+                        </span>
+                      </p>
+                      <div className="kb-slack-bubble">
+                        <p className="kb-message-text">{message.body}</p>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </section>
             ))}
           </section>
-        ))}
+        </div>
       </div>
     </>
   );

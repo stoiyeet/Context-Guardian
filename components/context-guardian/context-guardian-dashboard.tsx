@@ -61,7 +61,7 @@ function initializeUiState(ticket: OpsTicket): TicketUiState {
   };
 }
 
-function firstPayload(ticket: OpsTicket): string | null {
+function getPayload(ticket: OpsTicket): string | null {
   return ticket.resolutionSteps.find((step) => step.payloadJson)?.payloadJson ?? null;
 }
 
@@ -70,7 +70,8 @@ export default function ContextGuardianDashboard() {
   const [ticketUi, setTicketUi] = useState<Record<string, TicketUiState>>({});
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [incomingIds, setIncomingIds] = useState<string[]>([]);
-  const [openTicketId, setOpenTicketId] = useState<string | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [modalTicketId, setModalTicketId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const applySnapshot = useCallback((snapshot: EventSnapshot) => {
@@ -99,6 +100,8 @@ export default function ContextGuardianDashboard() {
       }
       return nextState;
     });
+
+    setSelectedTicketId((current) => current ?? snapshot.tickets[0]?.id ?? null);
   }, []);
 
   useEffect(() => {
@@ -113,19 +116,29 @@ export default function ContextGuardianDashboard() {
     };
   }, [applySnapshot]);
 
-  const openTicket = useMemo(
-    () => tickets.find((ticket) => ticket.id === openTicketId) ?? null,
-    [tickets, openTicketId],
+  const selectedTicket = useMemo(
+    () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
+    [tickets, selectedTicketId],
   );
 
-  const openTicketUi = openTicket ? ticketUi[openTicket.id] : undefined;
+  const modalTicket = useMemo(
+    () => tickets.find((ticket) => ticket.id === modalTicketId) ?? null,
+    [tickets, modalTicketId],
+  );
 
-  const readyToOpen = useCallback(
+  const selectedTicketUi = selectedTicket ? ticketUi[selectedTicket.id] : undefined;
+  const modalTicketUi = modalTicket ? ticketUi[modalTicket.id] : undefined;
+
+  const isReady = useCallback(
     (ticket: TicketSnapshot) => Date.parse(ticket.blueprintGeneratedAt) <= nowMs,
     [nowMs],
   );
 
-  const markReviewed = useCallback((ticketId: string, stepId: string, value: boolean) => {
+  const selectedReady = Boolean(selectedTicket && isReady(selectedTicket));
+  const selectedPayload = selectedTicket ? getPayload(selectedTicket) : null;
+  const modalPayload = modalTicket ? getPayload(modalTicket) : null;
+
+  const setStepReviewed = useCallback((ticketId: string, stepId: string, value: boolean) => {
     setTicketUi((previous) => {
       const current = previous[ticketId];
       if (!current) {
@@ -170,6 +183,20 @@ export default function ContextGuardianDashboard() {
     }, 1_100);
   }, []);
 
+  const canAuthorizeSelected = Boolean(
+    selectedTicket &&
+      selectedTicketUi &&
+      !selectedTicketUi.authorized &&
+      selectedTicket.resolutionSteps.every((step) => selectedTicketUi.reviewedStepIds[step.id]),
+  );
+
+  const canAuthorizeModal = Boolean(
+    modalTicket &&
+      modalTicketUi &&
+      !modalTicketUi.authorized &&
+      modalTicket.resolutionSteps.every((step) => modalTicketUi.reviewedStepIds[step.id]),
+  );
+
   return (
     <main className="context-shell">
       <section className="panel panel-left">
@@ -178,32 +205,26 @@ export default function ContextGuardianDashboard() {
         </div>
 
         <div className="stream-scroll">
-          {tickets.length === 0 && (
-            <div className="stream-empty">Awaiting HTTP ingest events.</div>
-          )}
+          {tickets.length === 0 && <div className="stream-empty">Awaiting HTTP ingest events.</div>}
 
           {tickets.map((ticket) => {
-            const isReady = readyToOpen(ticket);
+            const ready = isReady(ticket);
 
             return (
               <button
                 key={ticket.id}
                 type="button"
                 className={`event-card ${incomingIds.includes(ticket.id) ? "slide-in-top" : ""} ${
-                  isReady ? "event-card-ready" : ""
-                }`}
-                onClick={() => {
-                  if (isReady) {
-                    setOpenTicketId(ticket.id);
-                  }
-                }}
+                  ready ? "event-card-ready" : ""
+                } ${selectedTicket?.id === ticket.id ? "event-card-selected" : ""}`}
+                onClick={() => setSelectedTicketId(ticket.id)}
               >
                 <p className="event-id">{ticket.id}</p>
                 <p className="event-raw">{ticket.rawError}</p>
                 <p className="event-ingested">{formatTimestamp(ticket.ingestedAt)}</p>
 
                 <div className="event-status-row">
-                  {!isReady ? (
+                  {!ready ? (
                     <span className="processing-badge">
                       <span className="processing-pulse" aria-hidden />
                       Processing
@@ -219,40 +240,177 @@ export default function ContextGuardianDashboard() {
       </section>
 
       <section className="panel panel-center">
-        <div className="waiting-state">
-          <p>Monitoring operational stream</p>
-          <span className="heartbeat" aria-hidden />
-        </div>
+        {!selectedTicket ? (
+          <div className="waiting-state">
+            <p>Monitoring operational stream</p>
+            <span className="heartbeat" aria-hidden />
+          </div>
+        ) : !selectedReady ? (
+          <div className="waiting-state">
+            <p>Monitoring operational stream</p>
+            <p className="waiting-subtle">
+              {selectedTicket.id} blueprint is still processing ({formatBlueprintLag(selectedTicket)} target).
+            </p>
+            <span className="heartbeat" aria-hidden />
+          </div>
+        ) : (
+          <div className="panel-content">
+            <section className="summary-block">
+              <p className="section-tag">Blueprint Summary</p>
+              <p className="summary-metric">{formatBlueprintLag(selectedTicket)}</p>
+              <p className="summary-claim">Generated before first human view.</p>
+              <div className="summary-time-grid">
+                <p>
+                  <span>Ingested</span>
+                  <strong>{formatTimestamp(selectedTicket.ingestedAt)}</strong>
+                </p>
+                <p>
+                  <span>Blueprint Ready</span>
+                  <strong>{formatTimestamp(selectedTicket.blueprintGeneratedAt)}</strong>
+                </p>
+              </div>
+            </section>
+
+            <section className="summary-block">
+              <p className="section-tag">Diagnosis</p>
+              <p className="raw-code">{selectedTicket.rawError}</p>
+              <p className="diagnosis-text-inline">{selectedTicket.diagnosis}</p>
+            </section>
+
+            <section className="summary-block">
+              <p className="section-tag">Evidence Summary</p>
+              <p className="evidence-sentence">
+                This diagnosis draws from 3 sources:{" "}
+                {EVIDENCE_LINKS.map((link, index) => (
+                  <span key={link.id}>
+                    <Link href={`/knowledge-base?artifact=${link.id}#${link.id}`} className="evidence-link">
+                      [{link.label}]
+                    </Link>
+                    {index < EVIDENCE_LINKS.length - 1 ? ", " : "."}
+                  </span>
+                ))}
+              </p>
+
+              <div className="node-chain" aria-hidden>
+                <span>Ticket</span>
+                <i />
+                <span>Slack</span>
+                <i />
+                <span>OPS-8492</span>
+                <i />
+                <span>Post-Mortem</span>
+              </div>
+
+              <button
+                type="button"
+                className="open-modal-button"
+                onClick={() => setModalTicketId(selectedTicket.id)}
+              >
+                Open Full Blueprint View
+              </button>
+            </section>
+          </div>
+        )}
       </section>
 
       <section className="panel panel-right">
-        <div className="waiting-state">
-          <p>Monitoring operational stream</p>
-          <span className="heartbeat" aria-hidden />
-        </div>
+        {!selectedTicket ? (
+          <div className="waiting-state">
+            <p>Monitoring operational stream</p>
+            <span className="heartbeat" aria-hidden />
+          </div>
+        ) : !selectedReady || !selectedTicketUi ? (
+          <div className="waiting-state">
+            <p>Resolution pathway will appear when blueprint is ready.</p>
+            <span className="heartbeat" aria-hidden />
+          </div>
+        ) : (
+          <div className="panel-content">
+            <section className="summary-block">
+              <p className="section-tag">Resolution Pathway</p>
+              <ol className="resolution-steps">
+                {selectedTicket.resolutionSteps.map((step) => {
+                  const checked = selectedTicketUi.reviewedStepIds[step.id] ?? false;
+                  return (
+                    <li key={step.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            setStepReviewed(
+                              selectedTicket.id,
+                              step.id,
+                              event.currentTarget.checked,
+                            )
+                          }
+                        />
+                        <span>{step.details}</span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              {selectedPayload && (
+                <div className="payload-wrap">
+                  <div className="payload-header">
+                    <span>JSON payload</span>
+                    <button type="button" onClick={() => void copyPayload(selectedPayload)}>
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <pre>{selectedPayload}</pre>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="authorize-button"
+                disabled={!canAuthorizeSelected}
+                onClick={() => authorize(selectedTicket.id)}
+              >
+                {selectedTicketUi.authorized ? "Resolution Authorized" : "Authorize Resolution"}
+              </button>
+            </section>
+
+            <section className="summary-block confidence-block">
+              <p className="section-tag">Confidence Summary</p>
+              <p className="confidence-label">
+                {(selectedTicket.confidenceScore * 100).toFixed(0)}% inference confidence
+              </p>
+              <div className="confidence-track">
+                <div
+                  className="confidence-value"
+                  style={{ width: `${Math.round(selectedTicket.confidenceScore * 100)}%` }}
+                />
+              </div>
+            </section>
+          </div>
+        )}
       </section>
 
-      {openTicket && openTicketUi && (
+      {modalTicket && modalTicketUi && isReady(modalTicket) && (
         <div className="blueprint-overlay" role="dialog" aria-modal="true">
           <div className="blueprint-modal">
             <header className="blueprint-header">
-              <p className="blueprint-title">Inference Blueprint | {openTicket.id}</p>
-              <button type="button" className="close-button" onClick={() => setOpenTicketId(null)}>
+              <p className="blueprint-title">Inference Blueprint | {modalTicket.id}</p>
+              <button type="button" className="close-button" onClick={() => setModalTicketId(null)}>
                 Close
               </button>
             </header>
 
             <section className="blueprint-section timestamp-focus">
               <p className="section-tag">1. Timestamp Differential</p>
-              <p className="lag-value">{formatBlueprintLag(openTicket)}</p>
+              <p className="lag-value">{formatBlueprintLag(modalTicket)}</p>
               <div className="timestamp-grid">
                 <p>
                   <span>Ingested</span>
-                  <strong>{formatTimestamp(openTicket.ingestedAt)}</strong>
+                  <strong>{formatTimestamp(modalTicket.ingestedAt)}</strong>
                 </p>
                 <p>
                   <span>Blueprint Ready</span>
-                  <strong>{formatTimestamp(openTicket.blueprintGeneratedAt)}</strong>
+                  <strong>{formatTimestamp(modalTicket.blueprintGeneratedAt)}</strong>
                 </p>
               </div>
               <p className="timestamp-claim">Generated before first human view.</p>
@@ -260,8 +418,8 @@ export default function ContextGuardianDashboard() {
 
             <section className="blueprint-section">
               <p className="section-tag">2. Diagnosis</p>
-              <p className="raw-code">{openTicket.rawError}</p>
-              <p className="diagnosis-text">{openTicket.diagnosis}</p>
+              <p className="raw-code">{modalTicket.rawError}</p>
+              <p className="diagnosis-text">{modalTicket.diagnosis}</p>
             </section>
 
             <section className="blueprint-section">
@@ -292,8 +450,8 @@ export default function ContextGuardianDashboard() {
             <section className="blueprint-section">
               <p className="section-tag">4. Resolution Pathway</p>
               <ol className="resolution-steps">
-                {openTicket.resolutionSteps.map((step) => {
-                  const checked = openTicketUi.reviewedStepIds[step.id] ?? false;
+                {modalTicket.resolutionSteps.map((step) => {
+                  const checked = modalTicketUi.reviewedStepIds[step.id] ?? false;
                   return (
                     <li key={step.id}>
                       <label>
@@ -301,7 +459,7 @@ export default function ContextGuardianDashboard() {
                           type="checkbox"
                           checked={checked}
                           onChange={(event) =>
-                            markReviewed(openTicket.id, step.id, event.currentTarget.checked)
+                            setStepReviewed(modalTicket.id, step.id, event.currentTarget.checked)
                           }
                         />
                         <span>{step.details}</span>
@@ -311,36 +469,25 @@ export default function ContextGuardianDashboard() {
                 })}
               </ol>
 
-              {firstPayload(openTicket) && (
+              {modalPayload && (
                 <div className="payload-wrap">
                   <div className="payload-header">
                     <span>JSON payload</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const payload = firstPayload(openTicket);
-                        if (payload) {
-                          void copyPayload(payload);
-                        }
-                      }}
-                    >
+                    <button type="button" onClick={() => void copyPayload(modalPayload)}>
                       {copied ? "Copied" : "Copy"}
                     </button>
                   </div>
-                  <pre>{firstPayload(openTicket)}</pre>
+                  <pre>{modalPayload}</pre>
                 </div>
               )}
 
               <button
                 type="button"
                 className="authorize-button"
-                disabled={
-                  openTicketUi.authorized ||
-                  !openTicket.resolutionSteps.every((step) => openTicketUi.reviewedStepIds[step.id])
-                }
-                onClick={() => authorize(openTicket.id)}
+                disabled={!canAuthorizeModal}
+                onClick={() => authorize(modalTicket.id)}
               >
-                {openTicketUi.authorized ? "Resolution Authorized" : "Authorize Resolution"}
+                {modalTicketUi.authorized ? "Resolution Authorized" : "Authorize Resolution"}
               </button>
             </section>
           </div>
