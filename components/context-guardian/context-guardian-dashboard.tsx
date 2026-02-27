@@ -391,16 +391,6 @@ export default function ContextGuardianDashboard() {
       <div className="panel panel-left">
         <div className="panel-header">
           <p className="panel-eyebrow">Live Event Stream</p>
-          <p className="panel-subtitle">POST to `/api/ingest` from your terminal to inject events.</p>
-        </div>
-
-        <div className="terminal-callout">
-          <p className="terminal-label">Quick ingest</p>
-          <code>
-            {
-              "curl -X POST localhost:3000/api/ingest -H 'Content-Type: application/json' -d '{\"rawError\":\"ERR_739_CUSIP_MISMATCH\"}'"
-            }
-          </code>
         </div>
 
         <div className="stream-scroll">
@@ -446,7 +436,7 @@ export default function ContextGuardianDashboard() {
 
       <div className="panel panel-center">
         {!selectedTicket ? (
-          <div className="empty-state">No tickets yet. Ingest one via `POST /api/ingest`.</div>
+          <div className="empty-state">No tickets yet.</div>
         ) : (
           <>
             {!isSelectedReady ? (
