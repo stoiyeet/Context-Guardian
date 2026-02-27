@@ -18,6 +18,9 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+Set `OPENAI_API_KEY` to enable Phase 2 embeddings + synthesis (`text-embedding-3-small` + `gpt-4o`).
+Without a key, the app degrades gracefully to deterministic retrieval/synthesis logic.
+
 ## Ingest Events From Another Terminal
 
 The left panel is driven by HTTP ingest calls, not an in-app timer.
@@ -48,15 +51,17 @@ The dashboard polls `GET /api/events` and animates new cards into the stream.
 
 - `POST /api/ingest`: ingest a raw event into the live stream.
 - `GET /api/events`: stream snapshot used by the dashboard poller.
-- `GET /api/tickets`: mock contract endpoint returning a `BlueprintType` object for `ERR_739_CUSIP_MISMATCH`.
+- `GET /api/tickets`: runs live inference and returns a `BlueprintType` response (plus inference metadata).
+- `POST /api/tickets/:ticketId/authorize`: marks ticket authorized and triggers synthesized-knowledge update.
 
 ## Data Sources
 
-- `lib/dummyData.ts`: blueprint contract data used by ingestion and the mock `/api/tickets` endpoint.
 - `lib/knowledgeBase.ts`: server-side knowledge artifacts (Slack thread, Jira OPS-8492, post-mortem) rendered by `/knowledge-base`.
+- `lib/synthesizedKnowledge.ts`: persistent compounding memory layer (`/data/synthesizedKnowledge.json`).
+- `lib/vectorUtils.ts`: local cosine similarity search with pgvector/Pinecone swap point.
 
-## Phase 2 Integration Hooks (Architected, Not Implemented)
+## Phase 3 Hooks
 
-- `app/api/ingest/route.ts` has `// PHASE 2: LLM INTEGRATION POINT` for replacing dummy blueprint generation with structured LLM inference.
-- `lib/ticketStore.ts` exposes `getSemanticNeighbors(ticketId)` placeholder for vector DB evidence retrieval.
-- `lib/eventStreamClient.ts` centralizes stream transport so polling can be swapped for SSE/WebSocket.
+- `lib/vectorUtils.ts`: swap local retrieval for pgvector/Pinecone.
+- `lib/synthesizedKnowledge.ts`: move background updates to event queue (SQS/Inngest).
+- `lib/synthesizedKnowledge.ts`: move pattern relationships to graph DB traversal (Neo4j).

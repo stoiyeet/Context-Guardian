@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { isBlueprintReady, listTickets } from "@/lib/ticketStore";
+import {
+  getAuditLogByTicketId,
+  getInferenceMetadata,
+  isBlueprintReady,
+  listTickets,
+} from "@/lib/ticketStore";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,6 +17,8 @@ export async function GET() {
 
   return NextResponse.json({
     tickets,
+    inferenceByTicketId: getInferenceMetadata(),
+    auditLogByTicketId: getAuditLogByTicketId(),
     serverTime: new Date().toISOString(),
   });
 }

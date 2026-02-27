@@ -7,7 +7,8 @@ import {
   type EventSnapshot,
   type TicketSnapshot,
 } from "@/lib/eventStreamClient";
-import type { OpsTicket } from "@/lib/types";
+import type { InferenceMetadata } from "@/lib/inferenceTypes";
+import type { AuditLogEntry, OpsTicket } from "@/lib/types";
 
 type TicketUiState = {
   reviewedStepIds: Record<string, boolean>;
@@ -19,20 +20,27 @@ type EvidenceLink = {
   label: string;
 };
 
-const EVIDENCE_LINKS: EvidenceLink[] = [
-  {
-    href: "/knowledge-base?artifact=slack-nov-2024&message=m5#m5",
-    label: "Slack thread Nov 2024",
-  },
-  {
-    href: "/knowledge-base?artifact=jira-ops-8492#jira-ops-8492",
-    label: "OPS-8492",
-  },
-  {
-    href: "/knowledge-base?artifact=postmortem-cusip-2024-11#postmortem-cusip-2024-11",
-    label: "post-mortem",
-  },
-];
+function confidencePercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function evidenceLinksFromMeta(meta?: InferenceMetadata): EvidenceLink[] {
+  if (!meta || meta.evidenceCitations.length === 0) {
+    return [];
+  }
+  return meta.evidenceCitations.slice(0, 4).map((citation) => ({
+    href: citation.href,
+    label: citation.citation,
+  }));
+}
+
+function summaryEvidenceSentence(meta?: InferenceMetadata): string {
+  if (!meta || meta.evidenceCitations.length === 0) {
+    return "No strong historical artifact match was found.";
+  }
+  const citations = meta.evidenceCitations.slice(0, 3).map((citation) => citation.citation);
+  return `This diagnosis draws from ${citations.length} sources: ${citations.join(", ")}.`;
+}
 
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
@@ -74,6 +82,12 @@ function activeContributors(ticket: OpsTicket): string[] {
 export default function ContextGuardianDashboard() {
   const [tickets, setTickets] = useState<TicketSnapshot[]>([]);
   const [ticketUi, setTicketUi] = useState<Record<string, TicketUiState>>({});
+  const [inferenceByTicketId, setInferenceByTicketId] = useState<
+    Record<string, InferenceMetadata>
+  >({});
+  const [auditLogByTicketId, setAuditLogByTicketId] = useState<
+    Record<string, AuditLogEntry[]>
+  >({});
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [incomingIds, setIncomingIds] = useState<string[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -107,6 +121,13 @@ export default function ContextGuardianDashboard() {
       return nextState;
     });
 
+    if (snapshot.inferenceByTicketId) {
+      setInferenceByTicketId(snapshot.inferenceByTicketId);
+    }
+    if (snapshot.auditLogByTicketId) {
+      setAuditLogByTicketId(snapshot.auditLogByTicketId);
+    }
+
     setSelectedTicketId((current) => current ?? snapshot.tickets[0]?.id ?? null);
   }, []);
 
@@ -134,6 +155,9 @@ export default function ContextGuardianDashboard() {
 
   const selectedTicketUi = selectedTicket ? ticketUi[selectedTicket.id] : undefined;
   const modalTicketUi = modalTicket ? ticketUi[modalTicket.id] : undefined;
+  const selectedInference = selectedTicket ? inferenceByTicketId[selectedTicket.id] : undefined;
+  const modalInference = modalTicket ? inferenceByTicketId[modalTicket.id] : undefined;
+  const selectedAuditLog = selectedTicket ? auditLogByTicketId[selectedTicket.id] ?? [] : [];
 
   const isReady = useCallback(
     (ticket: TicketSnapshot) => Date.parse(ticket.blueprintGeneratedAt) <= nowMs,
@@ -145,6 +169,8 @@ export default function ContextGuardianDashboard() {
   const modalPayload = modalTicket ? getPayload(modalTicket) : null;
   const selectedContributors = selectedTicket ? activeContributors(selectedTicket) : [];
   const modalContributors = modalTicket ? activeContributors(modalTicket) : [];
+  const selectedEvidenceLinks = evidenceLinksFromMeta(selectedInference);
+  const modalEvidenceLinks = evidenceLinksFromMeta(modalInference);
 
   const setStepReviewed = useCallback((ticketId: string, stepId: string, value: boolean) => {
     setTicketUi((previous) => {
@@ -166,7 +192,7 @@ export default function ContextGuardianDashboard() {
     });
   }, []);
 
-  const authorize = useCallback((ticketId: string) => {
+  const authorize = useCallback(async (ticketId: string) => {
     setTicketUi((previous) => {
       const current = previous[ticketId];
       if (!current) {
@@ -181,6 +207,25 @@ export default function ContextGuardianDashboard() {
         },
       };
     });
+    setTickets((previous) =>
+      previous.map((ticket) =>
+        ticket.id === ticketId ? { ...ticket, status: "Authorized" as const } : ticket,
+      ),
+    );
+
+    try {
+      await fetch(`/api/tickets/${ticketId}/authorize`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          operatorNotes: "Authorized from dashboard.",
+        }),
+      });
+    } catch {
+      // Keep optimistic UI state if authorization endpoint fails.
+    }
   }, []);
 
   const copyPayload = useCallback(async (payload: string) => {
@@ -256,9 +301,7 @@ export default function ContextGuardianDashboard() {
         ) : !selectedReady ? (
           <div className="waiting-state">
             <p>Monitoring operational stream</p>
-            <p className="waiting-subtle">
-              {selectedTicket.id} blueprint is still processing ({formatBlueprintLag(selectedTicket)} target).
-            </p>
+            <p className="waiting-subtle">{selectedTicket.id} blueprint inference is still running.</p>
             <span className="heartbeat" aria-hidden />
           </div>
         ) : (
@@ -283,21 +326,28 @@ export default function ContextGuardianDashboard() {
               <p className="section-tag">Diagnosis</p>
               <p className="raw-code">{selectedTicket.rawError}</p>
               <p className="diagnosis-text-inline">{selectedTicket.diagnosis}</p>
+              {selectedInference?.unknownPattern && (
+                <p className="waiting-subtle">
+                  This resolution will be added to organizational memory once completed.
+                </p>
+              )}
             </section>
 
             <section className="summary-block">
               <p className="section-tag">Evidence Summary</p>
-              <p className="evidence-sentence">
-                This diagnosis draws from 3 sources:{" "}
-                {EVIDENCE_LINKS.map((link, index) => (
-                  <span key={link.href}>
-                    <Link href={link.href} className="evidence-link">
-                      [{link.label}]
-                    </Link>
-                    {index < EVIDENCE_LINKS.length - 1 ? ", " : "."}
-                  </span>
-                ))}
-              </p>
+              <p className="evidence-sentence">{summaryEvidenceSentence(selectedInference)}</p>
+              {selectedEvidenceLinks.length > 0 && (
+                <p className="evidence-sentence">
+                  {selectedEvidenceLinks.map((link, index) => (
+                    <span key={link.href}>
+                      <Link href={link.href} className="evidence-link">
+                        [{link.label}]
+                      </Link>
+                      {index < selectedEvidenceLinks.length - 1 ? ", " : "."}
+                    </span>
+                  ))}
+                </p>
+              )}
 
               <div className="node-chain" aria-hidden>
                 <span>Ticket</span>
@@ -335,7 +385,11 @@ export default function ContextGuardianDashboard() {
         ) : (
           <div className="panel-content">
             <section className="summary-block">
-              <p className="section-tag">Resolution Pathway</p>
+              <p className="section-tag">
+                {selectedInference?.unknownPattern
+                  ? "Intelligent Routing Pathway"
+                  : "Resolution Pathway"}
+              </p>
               <ol className="resolution-steps">
                 {selectedTicket.resolutionSteps.map((step) => {
                   const checked = selectedTicketUi.reviewedStepIds[step.id] ?? false;
@@ -377,6 +431,11 @@ export default function ContextGuardianDashboard() {
                   Prior active contributors: {selectedContributors.join(", ")}.
                 </p>
               )}
+              {selectedInference?.unknownPattern && (
+                <p className="active-contributors">
+                  No organizational precedent was found. This resolution will be added to memory when completed.
+                </p>
+              )}
 
               <button
                 type="button"
@@ -391,15 +450,56 @@ export default function ContextGuardianDashboard() {
             <section className="summary-block confidence-block">
               <p className="section-tag">Confidence Summary</p>
               <p className="confidence-label">
-                {(selectedTicket.confidenceScore * 100).toFixed(0)}% inference confidence
+                {confidencePercent(selectedInference?.confidence.overallConfidence ?? selectedTicket.confidenceScore)}{" "}
+                inference confidence
               </p>
               <div className="confidence-track">
                 <div
                   className="confidence-value"
-                  style={{ width: `${Math.round(selectedTicket.confidenceScore * 100)}%` }}
+                  style={{
+                    width: confidencePercent(
+                      selectedInference?.confidence.overallConfidence ??
+                        selectedTicket.confidenceScore,
+                    ),
+                  }}
                 />
               </div>
+              {selectedInference && (
+                <>
+                  <p className="waiting-subtle">
+                    Pattern match: {confidencePercent(selectedInference.confidence.patternMatchConfidence)}
+                  </p>
+                  <p className="waiting-subtle">
+                    SME routing: {confidencePercent(selectedInference.confidence.smeRoutingConfidence)}
+                  </p>
+                  <p className="waiting-subtle">
+                    Resolution path: {confidencePercent(selectedInference.confidence.resolutionPathConfidence)}
+                  </p>
+                  <p className="waiting-subtle">{selectedInference.confidence.humanReadableCaveat}</p>
+                </>
+              )}
             </section>
+
+            {selectedAuditLog.length > 0 && (
+              <section className="summary-block">
+                <p className="section-tag">Audit Log</p>
+                <ol className="resolution-steps">
+                  {selectedAuditLog.slice(0, 6).map((entry) => (
+                    <li key={entry.id}>
+                      <span>
+                        {formatTimestamp(entry.at)} — {entry.message}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+            {selectedInference?.degradedReason && (
+              <section className="summary-block">
+                <p className="section-tag">Inference Status</p>
+                <p className="waiting-subtle">{selectedInference.degradedReason}</p>
+              </section>
+            )}
           </div>
         )}
       </section>
@@ -438,17 +538,19 @@ export default function ContextGuardianDashboard() {
 
             <section className="blueprint-section">
               <p className="section-tag">3. Evidence Summary</p>
-              <p className="evidence-sentence">
-                This diagnosis draws from 3 sources:{" "}
-                {EVIDENCE_LINKS.map((link, index) => (
-                  <span key={link.href}>
-                    <Link href={link.href} className="evidence-link">
-                      [{link.label}]
-                    </Link>
-                    {index < EVIDENCE_LINKS.length - 1 ? ", " : "."}
-                  </span>
-                ))}
-              </p>
+              <p className="evidence-sentence">{summaryEvidenceSentence(modalInference)}</p>
+              {modalEvidenceLinks.length > 0 && (
+                <p className="evidence-sentence">
+                  {modalEvidenceLinks.map((link, index) => (
+                    <span key={link.href}>
+                      <Link href={link.href} className="evidence-link">
+                        [{link.label}]
+                      </Link>
+                      {index < modalEvidenceLinks.length - 1 ? ", " : "."}
+                    </span>
+                  ))}
+                </p>
+              )}
 
               <div className="node-chain" aria-hidden>
                 <span>Ticket</span>
@@ -499,6 +601,14 @@ export default function ContextGuardianDashboard() {
                 <p className="active-contributors">
                   Prior active contributors: {modalContributors.join(", ")}.
                 </p>
+              )}
+              {modalInference?.unknownPattern && (
+                <p className="active-contributors">
+                  No organizational precedent was found for this error pattern.
+                </p>
+              )}
+              {modalInference && (
+                <p className="waiting-subtle">{modalInference.confidence.humanReadableCaveat}</p>
               )}
 
               <button

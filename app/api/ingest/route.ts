@@ -6,10 +6,16 @@ import type { IngestPayload } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  let payload: IngestPayload;
+  let payload: IngestPayload & {
+    description?: string;
+    metadata?: Record<string, string | number | boolean>;
+  };
 
   try {
-    payload = (await request.json()) as IngestPayload;
+    payload = (await request.json()) as IngestPayload & {
+      description?: string;
+      metadata?: Record<string, string | number | boolean>;
+    };
   } catch {
     return NextResponse.json(
       {
@@ -28,8 +34,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // PHASE 2: call LLM with structured prompt and return a blueprint matching OpsTicket interface.
-  const ticket = ingestTicket(payload);
+  const ticket = await ingestTicket(payload);
 
   return NextResponse.json(
     {

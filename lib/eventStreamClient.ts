@@ -1,4 +1,5 @@
 import type { OpsTicket } from "@/lib/types";
+import type { InferenceMetadata } from "@/lib/inferenceTypes";
 
 export type TicketSnapshot = OpsTicket & {
   blueprintReady: boolean;
@@ -6,6 +7,15 @@ export type TicketSnapshot = OpsTicket & {
 
 export type EventSnapshot = {
   tickets: TicketSnapshot[];
+  inferenceByTicketId?: Record<string, InferenceMetadata>;
+  auditLogByTicketId?: Record<
+    string,
+    Array<{
+      id: string;
+      message: string;
+      at: string;
+    }>
+  >;
   serverTime: string;
 };
 
