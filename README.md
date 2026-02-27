@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Context Guardian (Phase 1 Prototype)
 
-## Getting Started
+Context Guardian is a Next.js 14 App Router prototype for fintech operations where every inbound event is opened as a pre-generated inference blueprint (never as raw ticket noise).
 
-First, run the development server:
+## Stack
+
+- Next.js 14 (App Router)
+- TypeScript
+- Tailwind CSS
+- React Flow (`reactflow`)
+
+## Run
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Ingest Events From Another Terminal
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The left panel is driven by HTTP ingest calls, not an in-app timer.
 
-## Learn More
+```bash
+curl -X POST http://localhost:3000/api/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"rawError":"ERR_739_CUSIP_MISMATCH"}'
+```
 
-To learn more about Next.js, take a look at the following resources:
+You can also send optional metadata overrides:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+curl -X POST http://localhost:3000/api/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ticketId":"OPS-9500",
+    "rawError":"ERR_401_ATON_REJECT_DEALERCODE",
+    "accountType":"RRSP",
+    "product":"ATON Inbound Transfer",
+    "severity":"High"
+  }'
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The dashboard polls `GET /api/events` and animates new cards into the stream.
 
-## Deploy on Vercel
+## Data Model
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Phase 1 dummy data is defined in:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `lib/dummyData.ts`
+
+It contains 5 seeded tickets, including hero case `ERR_739_CUSIP_MISMATCH` with TFSA transfer + Shaw/Rogers merger context.
+
+## Phase 2 Integration Hooks (Architected, Not Implemented)
+
+- `app/api/ingest/route.ts` has `// PHASE 2: LLM INTEGRATION POINT` for replacing dummy blueprint generation with structured LLM inference.
+- `lib/ticketStore.ts` exposes `getSemanticNeighbors(ticketId)` placeholder for vector DB evidence retrieval.
+- `lib/eventStreamClient.ts` centralizes stream transport so polling can be swapped for SSE/WebSocket.

@@ -1,5 +1,5 @@
-import AmbientOpsNode from "@/components/ambient-ops-node";
+import ContextGuardianDashboard from "@/components/context-guardian/context-guardian-dashboard";
 
 export default function Home() {
-  return <AmbientOpsNode />;
+  return <ContextGuardianDashboard />;
 }

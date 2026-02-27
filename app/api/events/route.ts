@@ -1,0 +1,17 @@
+import { NextResponse } from "next/server";
+import { isBlueprintReady, listTickets } from "@/lib/ticketStore";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export async function GET() {
+  const tickets = listTickets().map((ticket) => ({
+    ...ticket,
+    blueprintReady: isBlueprintReady(ticket),
+  }));
+
+  return NextResponse.json({
+    tickets,
+    serverTime: new Date().toISOString(),
+  });
+}

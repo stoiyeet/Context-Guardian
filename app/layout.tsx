@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Ambient Operations Node (POC)",
+  title: "Context Guardian",
   description:
-    "Prototype AI sidecar for engineering workflow friction detection, incident classification, and institutional memory retrieval.",
+    "Internal operations dashboard prototype for pre-generated inference blueprints.",
 };
 
 export default function RootLayout({
