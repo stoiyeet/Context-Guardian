@@ -2,8 +2,6 @@
 import {
   buildGenericBlueprint,
   cloneBlueprintFromTicket,
-  cloneDummyTickets,
-  dummyTickets,
 } from "@/lib/dummyData";
 import type {
   EvidenceEdge,
@@ -16,7 +14,7 @@ import type {
 
 const DEFAULT_PROCESSING_DELAY_MS = 2_500;
 
-let tickets: OpsTicket[] = cloneDummyTickets();
+let tickets: OpsTicket[] = [];
 let nextTicketNumber =
   tickets
     .map((ticket) => Number.parseInt(ticket.id.replace("OPS-", ""), 10))
@@ -49,13 +47,8 @@ function cloneTicket(ticket: OpsTicket): OpsTicket {
 }
 
 function getTemplateBlueprint(rawError: string): TicketBlueprint {
-  const template = dummyTickets.find((ticket) => ticket.rawError === rawError);
+  return buildGenericBlueprint(rawError);
 
-  if (!template) {
-    return buildGenericBlueprint(rawError);
-  }
-
-  return cloneBlueprintFromTicket(template);
 }
 
 function withTicketScopedIds(ticketId: string, blueprint: TicketBlueprint): TicketBlueprint {
@@ -158,7 +151,7 @@ export function isBlueprintReady(ticket: OpsTicket): boolean {
 }
 
 export function resetTicketStore(): void {
-  tickets = cloneDummyTickets();
+  tickets = []
   nextTicketNumber =
     tickets
       .map((ticket) => Number.parseInt(ticket.id.replace("OPS-", ""), 10))
