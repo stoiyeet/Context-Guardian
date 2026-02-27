@@ -48,12 +48,23 @@ export interface Sme {
   status: SmeStatus;
 }
 
+export interface SMEReference {
+  id: string;
+  name: string;
+  role: string;
+  status: SmeStatus;
+  citationArtifactIds: string[];
+}
+
 export interface TicketBlueprint {
   diagnosis: string;
   severity: Severity;
   accountType: string;
   product: string;
   confidenceScore: number;
+  solutionSummary: string | null;
+  priorResolutionTeam: SMEReference[];
+  draftMessage: string;
   resolutionSteps: ResolutionStep[];
   evidenceNodes: EvidenceNode[];
   evidenceEdges: EvidenceEdge[];

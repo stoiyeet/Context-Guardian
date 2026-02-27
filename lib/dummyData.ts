@@ -9,6 +9,26 @@ const ERR_739_BLUEPRINT: TicketBlueprint = {
   accountType: "Registered - TFSA",
   product: "TFSA Transfer",
   confidenceScore: 0.92,
+  solutionSummary:
+    "In November 2024, a similar CUSIP mismatch was resolved by manually remapping the post-merger identifier in the ledger with compliance sign-off and then re-running the transfer. The same-day retry completed successfully once the canonical identifier was used.",
+  priorResolutionTeam: [
+    {
+      id: "sme-sarah",
+      name: "Sarah Jenkins",
+      role: "Operations Analyst",
+      status: "Active",
+      citationArtifactIds: ["slack-nov-2024", "jira-ops-8492"],
+    },
+    {
+      id: "sme-marcus",
+      name: "Marcus T.",
+      role: "Compliance",
+      status: "Active",
+      citationArtifactIds: ["slack-nov-2024", "jira-ops-8492"],
+    },
+  ],
+  draftMessage:
+    "Ticket OPS-9021 is showing a CUSIP mismatch during bridge handoff after validator acceptance. The system diagnosed this as a merger-era identifier drift and has already prepared the remap+retry pathway. Given your work on OPS-8492 in November, please review the remap rationale and confirm the compliance note wording before authorization. Please provide approval or required edits in this thread within the next 30 minutes.",
   resolutionSteps: [
     {
       id: "step-verify-cusip",
@@ -136,6 +156,12 @@ function cloneBlueprint(blueprint: TicketBlueprint): TicketBlueprint {
     accountType: blueprint.accountType,
     product: blueprint.product,
     confidenceScore: blueprint.confidenceScore,
+    solutionSummary: blueprint.solutionSummary,
+    priorResolutionTeam: blueprint.priorResolutionTeam.map((member) => ({
+      ...member,
+      citationArtifactIds: [...member.citationArtifactIds],
+    })),
+    draftMessage: blueprint.draftMessage,
     resolutionSteps: blueprint.resolutionSteps.map((step) => ({ ...step })),
     evidenceNodes: blueprint.evidenceNodes.map((node) => ({
       ...node,
@@ -157,6 +183,12 @@ export function cloneBlueprintFromTicket(ticket: OpsTicket): TicketBlueprint {
     accountType: ticket.accountType,
     product: ticket.product,
     confidenceScore: ticket.confidenceScore,
+    solutionSummary: ticket.solutionSummary,
+    priorResolutionTeam: ticket.priorResolutionTeam.map((member) => ({
+      ...member,
+      citationArtifactIds: [...member.citationArtifactIds],
+    })),
+    draftMessage: ticket.draftMessage,
     resolutionSteps: ticket.resolutionSteps.map((step) => ({ ...step })),
     evidenceNodes: ticket.evidenceNodes.map((node) => ({
       ...node,
@@ -175,5 +207,17 @@ export function buildGenericBlueprint(rawError: string): TicketBlueprint {
       rawError === "ERR_739_CUSIP_MISMATCH"
         ? blueprint.diagnosis
         : "The event was classified as a transfer-processing mismatch and pre-mapped to a known remediation pathway.",
+    solutionSummary:
+      rawError === "ERR_739_CUSIP_MISMATCH"
+        ? blueprint.solutionSummary
+        : null,
+    priorResolutionTeam:
+      rawError === "ERR_739_CUSIP_MISMATCH"
+        ? blueprint.priorResolutionTeam
+        : [],
+    draftMessage:
+      rawError === "ERR_739_CUSIP_MISMATCH"
+        ? blueprint.draftMessage
+        : `Ticket ${HERO_TICKET_ID} requires triage for ${rawError}. The system has limited precedent and requests domain review before authorization.`,
   };
 }

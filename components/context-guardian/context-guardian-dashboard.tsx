@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   subscribeToEventStream,
@@ -8,6 +9,7 @@ import {
   type TicketSnapshot,
 } from "@/lib/eventStreamClient";
 import type { InferenceMetadata } from "@/lib/inferenceTypes";
+import type { MessageRecipient } from "@/lib/messageTypes";
 import type { AuditLogEntry, OpsTicket } from "@/lib/types";
 
 type TicketUiState = {
@@ -19,6 +21,8 @@ type EvidenceLink = {
   href: string;
   label: string;
 };
+
+const SOLUTION_CONFIDENCE_THRESHOLD = 0.58;
 
 function confidencePercent(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -40,6 +44,19 @@ function summaryEvidenceSentence(meta?: InferenceMetadata): string {
   }
   const citations = meta.evidenceCitations.slice(0, 3).map((citation) => citation.citation);
   return `This diagnosis draws from ${citations.length} sources: ${citations.join(", ")}.`;
+}
+
+function canRenderSolutionSummary(ticket: OpsTicket | null, meta?: InferenceMetadata): boolean {
+  if (!ticket || !meta) {
+    return false;
+  }
+  if (meta.unknownPattern) {
+    return false;
+  }
+  if (meta.confidence.overallConfidence < SOLUTION_CONFIDENCE_THRESHOLD) {
+    return false;
+  }
+  return Boolean(ticket.solutionSummary && ticket.priorResolutionTeam.length > 0);
 }
 
 function formatTimestamp(iso: string): string {
@@ -80,6 +97,7 @@ function activeContributors(ticket: OpsTicket): string[] {
 }
 
 export default function ContextGuardianDashboard() {
+  const router = useRouter();
   const [tickets, setTickets] = useState<TicketSnapshot[]>([]);
   const [ticketUi, setTicketUi] = useState<Record<string, TicketUiState>>({});
   const [inferenceByTicketId, setInferenceByTicketId] = useState<
@@ -92,6 +110,10 @@ export default function ContextGuardianDashboard() {
   const [incomingIds, setIncomingIds] = useState<string[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [modalTicketId, setModalTicketId] = useState<string | null>(null);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeRecipients, setComposeRecipients] = useState<MessageRecipient[]>([]);
+  const [composeBody, setComposeBody] = useState("");
   const [copied, setCopied] = useState(false);
 
   const applySnapshot = useCallback((snapshot: EventSnapshot) => {
@@ -171,6 +193,13 @@ export default function ContextGuardianDashboard() {
   const modalContributors = modalTicket ? activeContributors(modalTicket) : [];
   const selectedEvidenceLinks = evidenceLinksFromMeta(selectedInference);
   const modalEvidenceLinks = evidenceLinksFromMeta(modalInference);
+  const modalCanRenderSolution = canRenderSolutionSummary(modalTicket, modalInference);
+  const modalPriorTeam = modalTicket?.priorResolutionTeam ?? [];
+
+  useEffect(() => {
+    setSelectedTeamIds([]);
+    setComposeOpen(false);
+  }, [modalTicketId]);
 
   const setStepReviewed = useCallback((ticketId: string, stepId: string, value: boolean) => {
     setTicketUi((previous) => {
@@ -236,6 +265,49 @@ export default function ContextGuardianDashboard() {
     }, 1_100);
   }, []);
 
+  const toggleTeamSelection = useCallback((personId: string, checked: boolean) => {
+    setSelectedTeamIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, personId]));
+      }
+      return current.filter((id) => id !== personId);
+    });
+  }, []);
+
+  const openComposeForRecipients = useCallback(
+    (recipients: MessageRecipient[], draft: string) => {
+      setComposeRecipients(recipients);
+      setComposeBody(draft);
+      setComposeOpen(true);
+    },
+    [],
+  );
+
+  const sendComposeMessage = useCallback(async () => {
+    if (composeRecipients.length === 0 || !composeBody.trim()) {
+      return;
+    }
+    try {
+      await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recipients: composeRecipients,
+          body: composeBody.trim(),
+          senderName: "You",
+        }),
+      });
+      setComposeOpen(false);
+      setSelectedTeamIds([]);
+      setModalTicketId(null);
+      router.push("/messages");
+    } catch {
+      // Keep compose modal open on send failure.
+    }
+  }, [composeRecipients, composeBody, router]);
+
   const canAuthorizeSelected = Boolean(
     selectedTicket &&
       selectedTicketUi &&
@@ -249,6 +321,15 @@ export default function ContextGuardianDashboard() {
       !modalTicketUi.authorized &&
       modalTicket.resolutionSteps.every((step) => modalTicketUi.reviewedStepIds[step.id]),
   );
+
+  const selectedTeamRecipients: MessageRecipient[] = modalPriorTeam
+    .filter((person) => selectedTeamIds.includes(person.id))
+    .map((person) => ({
+      id: person.id,
+      name: person.name,
+      role: person.role,
+      status: person.status,
+    }));
 
   return (
     <main className="context-shell">
@@ -634,8 +715,82 @@ export default function ContextGuardianDashboard() {
               </div>
             </section>
 
+            {modalCanRenderSolution && modalTicket && (
+              <section className="blueprint-section">
+                <p className="section-tag">4. Solution Summary</p>
+                <p className="diagnosis-text">{modalTicket.solutionSummary}</p>
+
+                <div className="summary-block">
+                  <p className="section-tag">Prior Resolution Team</p>
+                  <div className="prior-team-list">
+                    {modalPriorTeam.map((person) => (
+                      <article key={person.id} className="prior-team-row">
+                        <div>
+                          <p>
+                            <span
+                              className={`status-dot ${
+                                person.status === "Active" ? "active" : "departed"
+                              }`}
+                              aria-hidden
+                            />
+                            {person.name}
+                          </p>
+                          <span>
+                            {person.role} • {person.status}
+                          </span>
+                        </div>
+                        <div className="prior-team-actions">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openComposeForRecipients(
+                                [
+                                  {
+                                    id: person.id,
+                                    name: person.name,
+                                    role: person.role,
+                                    status: person.status,
+                                  },
+                                ],
+                                modalTicket.draftMessage,
+                              )
+                            }
+                          >
+                            Contact
+                          </button>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={selectedTeamIds.includes(person.id)}
+                              onChange={(event) =>
+                                toggleTeamSelection(person.id, event.currentTarget.checked)
+                              }
+                            />
+                            <span>Select</span>
+                          </label>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  {selectedTeamRecipients.length > 0 && (
+                    <button
+                      type="button"
+                      className="open-modal-button"
+                      onClick={() =>
+                        openComposeForRecipients(selectedTeamRecipients, modalTicket.draftMessage)
+                      }
+                    >
+                      Create Group Message
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
+
             <section className="blueprint-section">
-              <p className="section-tag">4. Resolution Pathway</p>
+              <p className="section-tag">
+                {modalCanRenderSolution ? "5. Resolution Pathway" : "4. Resolution Pathway"}
+              </p>
               <ol className="resolution-steps">
                 {modalTicket.resolutionSteps.map((step) => {
                   const checked = modalTicketUi.reviewedStepIds[step.id] ?? false;
@@ -692,6 +847,59 @@ export default function ContextGuardianDashboard() {
               </button>
             </section>
           </div>
+
+          {composeOpen && (
+            <div className="compose-overlay" role="dialog" aria-modal="true">
+              <div className="compose-modal">
+                <header className="blueprint-header">
+                  <p className="blueprint-title">Compose Message</p>
+                  <button type="button" className="close-button" onClick={() => setComposeOpen(false)}>
+                    Close
+                  </button>
+                </header>
+
+                <section className="blueprint-section">
+                  <p className="section-tag">To</p>
+                  <div className="recipient-chip-wrap">
+                    {composeRecipients.map((recipient) => (
+                      <button
+                        type="button"
+                        key={recipient.id}
+                        className="recipient-chip"
+                        onClick={() =>
+                          setComposeRecipients((current) =>
+                            current.filter((entry) => entry.id !== recipient.id),
+                          )
+                        }
+                      >
+                        {recipient.name}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="blueprint-section">
+                  <p className="section-tag">Message</p>
+                  <textarea
+                    className="compose-textarea"
+                    value={composeBody}
+                    onChange={(event) => setComposeBody(event.currentTarget.value)}
+                  />
+                </section>
+
+                <section className="blueprint-section">
+                  <button
+                    type="button"
+                    className="authorize-button"
+                    disabled={composeRecipients.length === 0 || !composeBody.trim()}
+                    onClick={() => void sendComposeMessage()}
+                  >
+                    Send Message
+                  </button>
+                </section>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </main>

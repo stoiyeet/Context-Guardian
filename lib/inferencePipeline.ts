@@ -21,7 +21,7 @@ import type {
   IngestPayload,
   OpsTicket,
   ResolutionStep,
-  Sme,
+  SMEReference,
   TicketBlueprint,
 } from "@/lib/types";
 import type {
@@ -549,6 +549,17 @@ function ensureDiagnosisSpecificity(
   return `${diagnosis} The match is specific because failure occurred at stage "${input.context.pipelineStage}" while attempting "${input.context.attemptedAction}" after last successful state "${input.context.lastSuccessfulState}" (${citation}).`;
 }
 
+function buildFallbackDraftMessage(
+  input: InferencePipelineInput,
+  team: SMEReference[],
+): string {
+  const recipients = team.map((member) => member.name).join(", ") || "ops and infra reviewers";
+  const priorRef = team[0]
+    ? `Given your work on ${team[0].citationArtifactIds[0] ?? "the prior incident"}`
+    : "Based on prior incident ownership";
+  return `Ticket ${input.ticketId} is failing at ${input.context.pipelineStage} while ${input.context.attemptedAction}. The system diagnosed a probable precedent match and prepared a resolution pathway for review. Routing to ${recipients}. ${priorRef}, please review the proposed pathway and provide explicit go/no-go direction for authorization within 30 minutes.`;
+}
+
 function parseSeverity(input: string | undefined): OpsTicket["severity"] {
   if (input === "Low" || input === "Medium" || input === "High" || input === "Critical") {
     return input;
@@ -710,7 +721,7 @@ function buildEvidenceGraph(
 function formatCurrentSmes(
   synth: SynthesizedKnowledgeState,
   routedSmeIds: string[],
-): Sme[] {
+): TicketBlueprint["smes"] {
   const routed = synth.smeRoutingTable.filter((entry) => routedSmeIds.includes(entry.personId)).slice(0, 3);
   if (routed.length > 0) {
     return routed.map((entry) => ({
@@ -728,6 +739,76 @@ function formatCurrentSmes(
       name: entry.name,
       role: entry.role,
       status: entry.status,
+    }));
+}
+
+function normalizePersonName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function namesMatch(left: string, right: string): boolean {
+  const l = normalizePersonName(left);
+  const r = normalizePersonName(right);
+  if (l === r) {
+    return true;
+  }
+  if (l.includes("marcus t") && r.includes("marcus thibodeau")) {
+    return true;
+  }
+  if (r.includes("marcus t") && l.includes("marcus thibodeau")) {
+    return true;
+  }
+  return false;
+}
+
+function artifactInvolvesPerson(artifact: KnowledgeArtifact, personName: string): boolean {
+  if (artifact.type === "slack") {
+    return artifact.messages.some((message) => namesMatch(message.sender, personName));
+  }
+  if (artifact.type === "jira") {
+    if (namesMatch(artifact.owner, personName)) {
+      return true;
+    }
+    return artifact.comments.some((comment) => namesMatch(comment.author, personName));
+  }
+  return namesMatch(artifact.author, personName);
+}
+
+function buildPriorResolutionTeam(
+  synth: SynthesizedKnowledgeState,
+  retrieved: RetrievedArtifact[],
+  preferredIds: string[],
+): SMEReference[] {
+  const citationByPerson = new Map<string, string[]>();
+  for (const item of retrieved) {
+    const artifact = item.document.artifact;
+    for (const entry of synth.smeRoutingTable) {
+      if (artifactInvolvesPerson(artifact, entry.name)) {
+        const current = citationByPerson.get(entry.personId) ?? [];
+        if (!current.includes(artifact.id)) {
+          current.push(artifact.id);
+        }
+        citationByPerson.set(entry.personId, current);
+      }
+    }
+  }
+
+  const orderedIds = [
+    ...preferredIds,
+    ...Array.from(citationByPerson.keys()).filter((personId) => !preferredIds.includes(personId)),
+  ];
+
+  return orderedIds
+    .map((personId) => synth.smeRoutingTable.find((entry) => entry.personId === personId))
+    .filter((entry): entry is SynthesizedKnowledgeState["smeRoutingTable"][number] => Boolean(entry))
+    .filter((entry) => (citationByPerson.get(entry.personId) ?? []).length > 0)
+    .slice(0, 4)
+    .map((entry) => ({
+      id: entry.personId,
+      name: entry.name,
+      role: entry.role,
+      status: entry.status,
+      citationArtifactIds: citationByPerson.get(entry.personId) ?? [],
     }));
 }
 
@@ -754,6 +835,9 @@ function confidenceCaveat(
 
 type LlmSynthesisResponse = {
   diagnosis: string;
+  solutionSummary?: string | null;
+  draftMessage?: string;
+  priorResolutionTeamIds?: string[];
   resolutionSteps: Array<{
     title: string;
     details: string;
@@ -778,6 +862,12 @@ async function synthesizeWithLlm(
   if (!client || !hasOpenAIKey()) {
     return null;
   }
+
+  const directTeamCandidates = buildPriorResolutionTeam(
+    synthState,
+    retrieved,
+    synthResult.smeRecommendations.map((entry) => entry.personId),
+  );
 
   const context = {
     ticket: {
@@ -817,6 +907,13 @@ async function synthesizeWithLlm(
       replacedBy: entry.replacedBy,
       confidenceByDomain: entry.confidenceByDomain,
     })),
+    directTeamCandidates: directTeamCandidates.map((member) => ({
+      personId: member.id,
+      name: member.name,
+      role: member.role,
+      status: member.status,
+      citationArtifactIds: member.citationArtifactIds,
+    })),
     unknownByRetrieval,
   };
 
@@ -829,7 +926,7 @@ async function synthesizeWithLlm(
         {
           role: "system",
           content:
-            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English with no jargon and no hedging. If this matches precedent, explain exactly why: include pipeline stage, attempted action, and last successful state alignment, not just generic pattern language. Each resolution step is one sentence. Exactly one step requiresPayload=true and includes valid JSON payload. Cite evidence inside diagnosis text using parenthetical citations with exact source labels. If context is weak or precedent is weak, set unknownPattern=true and do not fabricate.",
+            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, solutionSummary, priorResolutionTeamIds, draftMessage, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English with no jargon and no hedging. If this matches precedent, explain exactly why: include pipeline stage, attempted action, and last successful state alignment. For every diagnosis claim include explicit citation labels in parentheses. solutionSummary must be 3-5 sentences, past tense, and fully grounded; if any sentence cannot be grounded in retrieved artifacts, omit it. If grounding is insufficient return solutionSummary as null. priorResolutionTeamIds must only contain IDs from directTeamCandidates. draftMessage must be professional and concise: include ticket ID, one-sentence situation summary, what system diagnosed, recipient-specific ask, reference prior involvement naturally, and close with clear action request. Each resolution step is one sentence and exactly one step requiresPayload=true with valid JSON payload. If context is weak or precedent is weak, set unknownPattern=true and do not fabricate.",
         },
         {
           role: "user",
@@ -856,13 +953,24 @@ function toBlueprintFromSynthesis(
   input: InferencePipelineInput,
   synthState: SynthesizedKnowledgeState,
   synthResult: Awaited<ReturnType<typeof querySynthesizedKnowledge>>,
+  retrieved: RetrievedArtifact[],
   citations: EvidenceCitation[],
   llm: LlmSynthesisResponse | null,
   unknownPattern: boolean,
-): { blueprint: TicketBlueprint; routedSmeIds: string[]; resolutionPathConfidence: number } {
+): {
+  blueprint: TicketBlueprint;
+  routedSmeIds: string[];
+  resolutionPathConfidence: number;
+  priorResolutionTeam: SMEReference[];
+} {
   const routedSmeIds =
     llm?.routedSmeIds?.filter((id) => synthState.smeRoutingTable.some((entry) => entry.personId === id)).slice(0, 3) ??
     synthResult.smeRecommendations.map((entry) => entry.personId).slice(0, 3);
+  const priorResolutionTeam = buildPriorResolutionTeam(
+    synthState,
+    retrieved,
+    llm?.priorResolutionTeamIds ?? routedSmeIds,
+  );
 
   const diagnosis =
     llm?.diagnosis ??
@@ -916,6 +1024,9 @@ function toBlueprintFromSynthesis(
       accountType: llm?.accountType ?? input.accountType ?? "Registered - TFSA",
       product: llm?.product ?? input.product ?? "ATON Transfer",
       confidenceScore: 0.5,
+      solutionSummary: llm?.solutionSummary ?? null,
+      priorResolutionTeam,
+      draftMessage: llm?.draftMessage ?? buildFallbackDraftMessage(input, priorResolutionTeam),
       resolutionSteps,
       evidenceNodes: graph.evidenceNodes,
       evidenceEdges: graph.evidenceEdges,
@@ -923,6 +1034,7 @@ function toBlueprintFromSynthesis(
     },
     routedSmeIds,
     resolutionPathConfidence,
+    priorResolutionTeam,
   };
 }
 
@@ -1006,6 +1118,7 @@ export async function runBlueprintInference(
       input,
       synthState,
       synthResult,
+      retrieved,
       citations,
       llm,
       unknownPattern,
@@ -1043,9 +1156,17 @@ export async function runBlueprintInference(
       humanReadableCaveat: caveat,
     };
 
+    const hasGroundedSolutionSummary =
+      !unknownPattern &&
+      overallConfidence >= 0.58 &&
+      Boolean(assembled.blueprint.solutionSummary) &&
+      assembled.priorResolutionTeam.length > 0;
+
     const blueprint: TicketBlueprint = {
       ...assembled.blueprint,
       confidenceScore: overallConfidence,
+      solutionSummary: hasGroundedSolutionSummary ? assembled.blueprint.solutionSummary : null,
+      priorResolutionTeam: hasGroundedSolutionSummary ? assembled.priorResolutionTeam : [],
       diagnosis: unknownPattern
         ? `${UNKNOWN_DIAGNOSIS} This resolution will be added to organizational memory once completed.`
         : assembled.blueprint.diagnosis,
@@ -1086,6 +1207,9 @@ export async function runBlueprintInference(
         accountType: input.accountType ?? "Unknown",
         product: input.product ?? "Unknown Transfer",
         confidenceScore: 0.12,
+        solutionSummary: null,
+        priorResolutionTeam: [],
+        draftMessage: buildFallbackDraftMessage(input, []),
         resolutionSteps: fallbackSteps,
         evidenceNodes: [
           {

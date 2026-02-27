@@ -106,6 +106,58 @@ function applyPayloadOverrides(blueprint: TicketBlueprint, payload: IngestPayloa
   };
 }
 
+function buildPlaceholderBlueprint(payload: IngestPayload): TicketBlueprint {
+  return {
+    diagnosis: "Inference blueprint is processing with enriched context.",
+    severity: payload.severity ?? "High",
+    accountType: payload.accountType ?? "Unknown",
+    product: payload.product ?? "Transfer",
+    confidenceScore: 0,
+    solutionSummary: null,
+    priorResolutionTeam: [],
+    draftMessage: "",
+    resolutionSteps: [
+      {
+        id: "step-processing",
+        title: "Inference in progress",
+        details: "Waiting for retrieval and synthesis to complete.",
+        status: "Pending",
+        reviewed: false,
+      },
+    ],
+    evidenceNodes: [],
+    evidenceEdges: [],
+    smes: [],
+  };
+}
+
+function buildPlaceholderInferenceMeta(payload: IngestPayload): InferenceMetadata {
+  return {
+    unknownPattern: false,
+    contextSummary: {
+      pipelineStage: payload.context.pipelineStage,
+      attemptedAction: payload.context.attemptedAction,
+      lastSuccessfulState: payload.context.lastSuccessfulState,
+      sourceInstitution: payload.context.sourceInstitution,
+      existingFlags: payload.context.existingFlags,
+      additionalSignals: payload.context.additionalSignals ?? [],
+      operatorNarrative: payload.context.operatorNarrative,
+    },
+    confidence: {
+      overallConfidence: 0,
+      patternMatchConfidence: 0,
+      smeRoutingConfidence: 0,
+      resolutionPathConfidence: 0,
+      humanReadableCaveat: "Inference is still processing.",
+    },
+    evidenceCitations: [],
+    patternIds: [],
+    correlationIds: [],
+    routedSmeIds: [],
+    similarityRationale: [],
+  };
+}
+
 function addAuditLog(ticketId: string, message: string): void {
   const current = auditLogByTicketId[ticketId] ?? [];
   auditLogByTicketId[ticketId] = [
@@ -140,21 +192,18 @@ export function getAuditLogByTicketId(): Record<string, AuditLogEntry[]> {
 export async function ingestTicket(payload: IngestPayload): Promise<OpsTicket> {
   const ticketId = nextId(payload.ticketId);
   const ingestedAt = new Date().toISOString();
-
-  const inferred = await runBlueprintInference({
-    ...payload,
+  const inferenceStartedAt = Date.now();
+  const processingUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const ticketScopedBlueprint = withTicketScopedIds(
     ticketId,
-    ingestedAt,
-  });
-
-  const blueprint = applyPayloadOverrides(inferred.blueprint, payload);
-  const ticketScopedBlueprint = withTicketScopedIds(ticketId, blueprint);
+    buildPlaceholderBlueprint(payload),
+  );
 
   const newTicket: OpsTicket = {
     id: ticketId,
     rawError: payload.rawError,
     ingestedAt,
-    blueprintGeneratedAt: inferred.blueprintGeneratedAt,
+    blueprintGeneratedAt: processingUntil,
     unread: true,
     status: "Open",
     ...ticketScopedBlueprint,
@@ -163,12 +212,57 @@ export async function ingestTicket(payload: IngestPayload): Promise<OpsTicket> {
   tickets = [newTicket, ...tickets];
   inferenceMetaByTicketId = {
     ...inferenceMetaByTicketId,
-    [ticketId]: inferred.metadata,
+    [ticketId]: buildPlaceholderInferenceMeta(payload),
   };
-  addAuditLog(ticketId, "Ticket ingested and inference blueprint generated.");
-  if (inferred.metadata.unknownPattern) {
-    addAuditLog(ticketId, "Unknown pattern state flagged. Routed for broad SME triage.");
-  }
+  addAuditLog(ticketId, "Ticket ingested. Inference blueprint generation started.");
+
+  void (async () => {
+    try {
+      const inferred = await runBlueprintInference({
+        ...payload,
+        ticketId,
+        ingestedAt,
+      });
+      const elapsedMs = Date.now() - inferenceStartedAt;
+      const minVisibleProcessingMs = 2200;
+      if (elapsedMs < minVisibleProcessingMs) {
+        await new Promise((resolve) => setTimeout(resolve, minVisibleProcessingMs - elapsedMs));
+      }
+      const blueprint = applyPayloadOverrides(inferred.blueprint, payload);
+      const finalScoped = withTicketScopedIds(ticketId, blueprint);
+      tickets = tickets.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              ...finalScoped,
+              blueprintGeneratedAt: inferred.blueprintGeneratedAt,
+            }
+          : ticket,
+      );
+      inferenceMetaByTicketId = {
+        ...inferenceMetaByTicketId,
+        [ticketId]: inferred.metadata,
+      };
+      addAuditLog(ticketId, "Inference blueprint generated.");
+      if (inferred.metadata.unknownPattern) {
+        addAuditLog(ticketId, "Unknown pattern state flagged. Routed for broad SME triage.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown inference failure";
+      tickets = tickets.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              blueprintGeneratedAt: new Date().toISOString(),
+              diagnosis:
+                "No organizational precedent found for this error pattern. This resolution will be added to organizational memory once completed.",
+            }
+          : ticket,
+      );
+      addAuditLog(ticketId, `Inference failed: ${message}`);
+    }
+  })();
+
   return cloneTicket(newTicket);
 }
 

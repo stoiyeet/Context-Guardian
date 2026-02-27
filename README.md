@@ -20,6 +20,7 @@ Open `http://localhost:3000`.
 
 Set `OPENAI_API_KEY` to enable Phase 2 embeddings + synthesis (`text-embedding-3-small` + `gpt-4o`).
 Without a key, the app degrades gracefully to deterministic retrieval/synthesis logic.
+Set `MONGODB_URI` to persist internal message threads across requests/sessions.
 
 ## Ingest Events From Another Terminal (Required Rich Context)
 
@@ -102,12 +103,15 @@ Each ticket blueprint now includes a readable context snapshot (stage/action/las
 - `GET /api/events`: stream snapshot used by the dashboard poller.
 - `GET /api/tickets`: runs live inference and returns a `BlueprintType` response (plus inference metadata).
 - `POST /api/tickets/:ticketId/authorize`: marks ticket authorized and triggers synthesized-knowledge update.
+- `GET /api/messages`: list internal message threads for the current session.
+- `POST /api/messages`: append message to existing recipient thread or create a new one.
 
 ## Data Sources
 
 - `lib/knowledgeBase.ts`: server-side knowledge artifacts (Slack thread, Jira OPS-8492, post-mortem) rendered by `/knowledge-base`.
 - `lib/synthesizedKnowledge.ts`: persistent compounding memory layer (`/data/synthesizedKnowledge.json`).
 - `lib/vectorUtils.ts`: local cosine similarity search with pgvector/Pinecone swap point.
+- `app/messages/page.tsx`: session internal messaging UI backed by `/api/messages`.
 
 ## Phase 3 Hooks
 
