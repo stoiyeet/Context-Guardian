@@ -333,6 +333,39 @@ export default function ContextGuardianDashboard() {
               )}
             </section>
 
+            {selectedInference?.contextSummary && (
+              <section className="summary-block">
+                <p className="section-tag">Operational Context</p>
+                <div className="summary-time-grid">
+                  <p>
+                    <span>Pipeline Stage</span>
+                    <strong>{selectedInference.contextSummary.pipelineStage}</strong>
+                  </p>
+                  <p>
+                    <span>Attempted Action</span>
+                    <strong>{selectedInference.contextSummary.attemptedAction}</strong>
+                  </p>
+                  <p>
+                    <span>Last Successful State</span>
+                    <strong>{selectedInference.contextSummary.lastSuccessfulState}</strong>
+                  </p>
+                  <p>
+                    <span>Source Institution</span>
+                    <strong>{selectedInference.contextSummary.sourceInstitution}</strong>
+                  </p>
+                </div>
+                <p className="waiting-subtle">
+                  Flags: over-contribution={selectedInference.contextSummary.existingFlags.overContributionHistory}; aml={selectedInference.contextSummary.existingFlags.amlStatus}; pending reviews=
+                  {selectedInference.contextSummary.existingFlags.pendingReviews.join(", ") || "none"}.
+                </p>
+                {selectedInference.contextSummary.additionalSignals.length > 0 && (
+                  <p className="waiting-subtle">
+                    Additional signals: {selectedInference.contextSummary.additionalSignals.join(", ")}.
+                  </p>
+                )}
+              </section>
+            )}
+
             <section className="summary-block">
               <p className="section-tag">Evidence Summary</p>
               <p className="evidence-sentence">{summaryEvidenceSentence(selectedInference)}</p>
@@ -348,6 +381,15 @@ export default function ContextGuardianDashboard() {
                   ))}
                 </p>
               )}
+              {selectedInference?.similarityRationale.length ? (
+                <ol className="resolution-steps">
+                  {selectedInference.similarityRationale.map((reason, index) => (
+                    <li key={`${selectedTicket.id}-reason-${index + 1}`}>
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
 
               <div className="node-chain" aria-hidden>
                 <span>Ticket</span>
@@ -534,6 +576,26 @@ export default function ContextGuardianDashboard() {
               <p className="section-tag">2. Diagnosis</p>
               <p className="raw-code">{modalTicket.rawError}</p>
               <p className="diagnosis-text">{modalTicket.diagnosis}</p>
+              {modalInference?.contextSummary && (
+                <div className="summary-time-grid">
+                  <p>
+                    <span>Pipeline Stage</span>
+                    <strong>{modalInference.contextSummary.pipelineStage}</strong>
+                  </p>
+                  <p>
+                    <span>Attempted Action</span>
+                    <strong>{modalInference.contextSummary.attemptedAction}</strong>
+                  </p>
+                  <p>
+                    <span>Last Successful State</span>
+                    <strong>{modalInference.contextSummary.lastSuccessfulState}</strong>
+                  </p>
+                  <p>
+                    <span>Source Institution</span>
+                    <strong>{modalInference.contextSummary.sourceInstitution}</strong>
+                  </p>
+                </div>
+              )}
             </section>
 
             <section className="blueprint-section">
@@ -551,6 +613,15 @@ export default function ContextGuardianDashboard() {
                   ))}
                 </p>
               )}
+              {modalInference?.similarityRationale.length ? (
+                <ol className="resolution-steps">
+                  {modalInference.similarityRationale.map((reason, index) => (
+                    <li key={`${modalTicket.id}-reason-${index + 1}`}>
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
 
               <div className="node-chain" aria-hidden>
                 <span>Ticket</span>

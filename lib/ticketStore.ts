@@ -13,11 +13,6 @@ import type {
   TicketBlueprint,
 } from "@/lib/types";
 
-type IngestPayloadExtended = IngestPayload & {
-  description?: string;
-  metadata?: Record<string, string | number | boolean>;
-};
-
 let tickets: OpsTicket[] = [];
 let inferenceMetaByTicketId: Record<string, InferenceMetadata> = {};
 let auditLogByTicketId: Record<string, AuditLogEntry[]> = {};
@@ -142,7 +137,7 @@ export function getAuditLogByTicketId(): Record<string, AuditLogEntry[]> {
   );
 }
 
-export async function ingestTicket(payload: IngestPayloadExtended): Promise<OpsTicket> {
+export async function ingestTicket(payload: IngestPayload): Promise<OpsTicket> {
   const ticketId = nextId(payload.ticketId);
   const ingestedAt = new Date().toISOString();
 
@@ -150,8 +145,6 @@ export async function ingestTicket(payload: IngestPayloadExtended): Promise<OpsT
     ...payload,
     ticketId,
     ingestedAt,
-    description: payload.description,
-    metadata: payload.metadata,
   });
 
   const blueprint = applyPayloadOverrides(inferred.blueprint, payload);

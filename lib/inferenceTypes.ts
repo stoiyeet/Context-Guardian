@@ -24,10 +24,24 @@ export type EvidenceCitation = {
 
 export type InferenceMetadata = {
   unknownPattern: boolean;
+  contextSummary: {
+    pipelineStage: string;
+    attemptedAction: string;
+    lastSuccessfulState: string;
+    sourceInstitution: string;
+    existingFlags: {
+      overContributionHistory: string;
+      amlStatus: string;
+      pendingReviews: string[];
+    };
+    additionalSignals: string[];
+    operatorNarrative?: string;
+  };
   confidence: ConfidenceBreakdown;
   evidenceCitations: EvidenceCitation[];
   patternIds: string[];
   correlationIds: string[];
   routedSmeIds: string[];
+  similarityRationale: string[];
   degradedReason?: string;
 };

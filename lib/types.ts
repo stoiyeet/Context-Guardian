@@ -77,6 +77,19 @@ export interface IngestPayload {
   accountType?: string;
   product?: string;
   severity?: Severity;
+  context: {
+    pipelineStage: string;
+    attemptedAction: string;
+    lastSuccessfulState: string;
+    sourceInstitution: string;
+    existingFlags: {
+      overContributionHistory: string;
+      amlStatus: string;
+      pendingReviews: string[];
+    };
+    additionalSignals?: string[];
+    operatorNarrative?: string;
+  };
 }
 
 export interface AuditLogEntry {

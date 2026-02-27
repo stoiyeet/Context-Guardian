@@ -34,8 +34,6 @@ import type {
 export type InferencePipelineInput = IngestPayload & {
   ticketId: string;
   ingestedAt: string;
-  description?: string;
-  metadata?: Record<string, string | number | boolean>;
 };
 
 export type InferencePipelineResult = {
@@ -113,6 +111,23 @@ function clamp01(value: number): number {
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function contextToText(input: InferencePipelineInput): string {
+  const context = input.context;
+  return normalizeWhitespace(
+    [
+      `pipeline_stage ${context.pipelineStage}`,
+      `attempted_action ${context.attemptedAction}`,
+      `last_successful_state ${context.lastSuccessfulState}`,
+      `source_institution ${context.sourceInstitution}`,
+      `over_contribution ${context.existingFlags.overContributionHistory}`,
+      `aml_status ${context.existingFlags.amlStatus}`,
+      `pending_reviews ${context.existingFlags.pendingReviews.join(" ")}`,
+      `additional_signals ${(context.additionalSignals ?? []).join(" ")}`,
+      `operator_narrative ${context.operatorNarrative ?? ""}`,
+    ].join(" "),
+  );
 }
 
 function snippet(value: string, max = 600): string {
@@ -369,27 +384,27 @@ async function getArtifactIndex(): Promise<ArtifactIndex> {
 }
 
 function retrievalQueries(input: InferencePipelineInput): RetrievalQuery[] {
-  const description = input.description ?? "";
+  const contextText = contextToText(input);
   const systems = extractSystems(
-    `${input.rawError} ${description} ${input.accountType ?? ""} ${input.product ?? ""}`,
+    `${input.rawError} ${contextText} ${input.accountType ?? ""} ${input.product ?? ""}`,
   );
 
   return [
     {
       intent: "symptom",
-      text: `${input.rawError} ${description}`,
+      text: `${input.rawError} stage ${input.context.pipelineStage} action ${input.context.attemptedAction} last_state ${input.context.lastSuccessfulState}`,
       weight: 0.3,
       threshold: 0.2,
     },
     {
       intent: "system",
-      text: `${systems.join(" ")} ${input.product ?? ""} ${input.accountType ?? ""}`,
+      text: `${systems.join(" ")} ${input.product ?? ""} ${input.accountType ?? ""} source ${input.context.sourceInstitution}`,
       weight: 0.25,
       threshold: 0.18,
     },
     {
       intent: "resolution",
-      text: `fix remediation ${input.rawError} ${systems.join(" ")}`,
+      text: `fix remediation ${input.rawError} stage ${input.context.pipelineStage} action ${input.context.attemptedAction} aml ${input.context.existingFlags.amlStatus} reviews ${input.context.existingFlags.pendingReviews.join(" ")}`,
       weight: 0.45,
       threshold: 0.16,
     },
@@ -485,6 +500,53 @@ function citationBundle(retrieved: RetrievedArtifact[]): EvidenceCitation[] {
     score: clamp01(item.score),
     href: item.document.href,
   }));
+}
+
+function buildSimilarityRationale(
+  input: InferencePipelineInput,
+  citations: EvidenceCitation[],
+  retrieved: RetrievedArtifact[],
+): string[] {
+  if (citations.length === 0 || retrieved.length === 0) {
+    return [];
+  }
+
+  const sharedSystems = Array.from(
+    new Set(retrieved.flatMap((item) => item.document.systems)),
+  ).slice(0, 4);
+  const top = citations[0];
+  const reasons: string[] = [
+    `Failure location matches prior evidence: current stage "${input.context.pipelineStage}" aligns with incidents cited in ${top.citation}.`,
+    `Current attempted action "${input.context.attemptedAction}" and last successful state "${input.context.lastSuccessfulState}" mirror the transition pattern seen in retrieved artifacts.`,
+  ];
+  if (sharedSystems.length > 0) {
+    reasons.push(
+      `Shared system footprint detected across ${sharedSystems.join(", ")} components, which increases match reliability beyond raw error code overlap.`,
+    );
+  }
+  return reasons;
+}
+
+function ensureDiagnosisSpecificity(
+  diagnosis: string,
+  input: InferencePipelineInput,
+  citations: EvidenceCitation[],
+): string {
+  if (!diagnosis) {
+    return diagnosis;
+  }
+  const hasSpecificMarkers =
+    diagnosis.toLowerCase().includes("pipeline") ||
+    diagnosis.toLowerCase().includes("stage") ||
+    diagnosis.toLowerCase().includes("last successful") ||
+    diagnosis.toLowerCase().includes("attempt");
+
+  if (hasSpecificMarkers) {
+    return diagnosis;
+  }
+
+  const citation = citations[0]?.citation ?? "retrieved incident evidence";
+  return `${diagnosis} The match is specific because failure occurred at stage "${input.context.pipelineStage}" while attempting "${input.context.attemptedAction}" after last successful state "${input.context.lastSuccessfulState}" (${citation}).`;
 }
 
 function parseSeverity(input: string | undefined): OpsTicket["severity"] {
@@ -721,11 +783,16 @@ async function synthesizeWithLlm(
     ticket: {
       id: input.ticketId,
       rawError: input.rawError,
-      description: input.description ?? "",
+      pipelineStage: input.context.pipelineStage,
+      attemptedAction: input.context.attemptedAction,
+      lastSuccessfulState: input.context.lastSuccessfulState,
+      sourceInstitution: input.context.sourceInstitution,
+      existingFlags: input.context.existingFlags,
+      additionalSignals: input.context.additionalSignals ?? [],
+      operatorNarrative: input.context.operatorNarrative ?? "",
       accountType: input.accountType ?? "",
       product: input.product ?? "",
       severity: input.severity ?? "",
-      metadata: input.metadata ?? {},
     },
     synthesizedMatches: synthResult.patterns,
     synthesizedCorrelations: synthResult.correlations.map((correlation) => ({
@@ -762,7 +829,7 @@ async function synthesizeWithLlm(
         {
           role: "system",
           content:
-            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English, no jargon, no hedging. Each resolution step one sentence. Exactly one step requiresPayload=true and includes valid JSON payload. Cite evidence inside diagnosis text using parenthetical citations with exact source labels. If context is weak, set unknownPattern=true and do not fabricate.",
+            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English with no jargon and no hedging. If this matches precedent, explain exactly why: include pipeline stage, attempted action, and last successful state alignment, not just generic pattern language. Each resolution step is one sentence. Exactly one step requiresPayload=true and includes valid JSON payload. Cite evidence inside diagnosis text using parenthetical citations with exact source labels. If context is weak or precedent is weak, set unknownPattern=true and do not fabricate.",
         },
         {
           role: "user",
@@ -805,6 +872,9 @@ function toBlueprintFromSynthesis(
           .slice(0, 2)
           .map((citation) => citation.citation)
           .join(" and ")}, which indicate the same operational failure pattern.`);
+  const diagnosisWithSpecificity = unknownPattern
+    ? diagnosis
+    : ensureDiagnosisSpecificity(diagnosis, input, citations);
 
   const fallbackSteps = buildFallbackSteps(input, unknownPattern);
   const llmSteps = llm?.resolutionSteps?.slice(0, 6).map((step, index) => ({
@@ -841,7 +911,7 @@ function toBlueprintFromSynthesis(
 
   return {
     blueprint: {
-      diagnosis,
+      diagnosis: diagnosisWithSpecificity,
       severity: llm?.severity ? parseSeverity(llm.severity) : parseSeverity(input.severity),
       accountType: llm?.accountType ?? input.accountType ?? "Registered - TFSA",
       product: llm?.product ?? input.product ?? "ATON Transfer",
@@ -861,14 +931,14 @@ export async function runBlueprintInference(
 ): Promise<InferencePipelineResult> {
   const fallbackStart = Date.now();
   try {
+    const contextText = contextToText(input);
     const ticketText = normalizeWhitespace(
       [
         input.rawError,
-        input.description ?? "",
+        contextText,
         input.accountType ?? "",
         input.product ?? "",
         input.severity ?? "",
-        JSON.stringify(input.metadata ?? {}),
       ].join(" "),
     );
 
@@ -881,7 +951,7 @@ export async function runBlueprintInference(
       loadSynthesizedKnowledge(),
       querySynthesizedKnowledge({
         rawError: input.rawError,
-        description: input.description ?? "",
+        description: contextText,
         accountType: input.accountType,
         product: input.product,
         severity: input.severity,
@@ -931,6 +1001,7 @@ export async function runBlueprintInference(
 
     const unknownPattern = noPrecedent || Boolean(llm?.unknownPattern);
     const citations = citationBundle(retrieved);
+    const similarityRationale = buildSimilarityRationale(input, citations, retrieved);
     const assembled = toBlueprintFromSynthesis(
       input,
       synthState,
@@ -984,11 +1055,21 @@ export async function runBlueprintInference(
       blueprint,
       metadata: {
         unknownPattern,
+        contextSummary: {
+          pipelineStage: input.context.pipelineStage,
+          attemptedAction: input.context.attemptedAction,
+          lastSuccessfulState: input.context.lastSuccessfulState,
+          sourceInstitution: input.context.sourceInstitution,
+          existingFlags: input.context.existingFlags,
+          additionalSignals: input.context.additionalSignals ?? [],
+          operatorNarrative: input.context.operatorNarrative,
+        },
         confidence,
         evidenceCitations: citations,
         patternIds: synthResult.patterns.map((item) => item.patternId),
         correlationIds: synthResult.correlations.map((item) => item.correlationId),
         routedSmeIds: assembled.routedSmeIds,
+        similarityRationale,
       },
       blueprintGeneratedAt: new Date().toISOString(),
     };
@@ -1040,6 +1121,15 @@ export async function runBlueprintInference(
       },
       metadata: {
         unknownPattern: unknown,
+        contextSummary: {
+          pipelineStage: input.context.pipelineStage,
+          attemptedAction: input.context.attemptedAction,
+          lastSuccessfulState: input.context.lastSuccessfulState,
+          sourceInstitution: input.context.sourceInstitution,
+          existingFlags: input.context.existingFlags,
+          additionalSignals: input.context.additionalSignals ?? [],
+          operatorNarrative: input.context.operatorNarrative,
+        },
         confidence: {
           overallConfidence: 0.12,
           patternMatchConfidence: 0.08,
@@ -1052,6 +1142,7 @@ export async function runBlueprintInference(
         patternIds: [],
         correlationIds: [],
         routedSmeIds: ["sarah-jenkins", "dev-chatterjee", "marcus-thibodeau"],
+        similarityRationale: [],
         degradedReason,
       },
       blueprintGeneratedAt: generatedAt,
