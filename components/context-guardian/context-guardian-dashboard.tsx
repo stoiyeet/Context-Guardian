@@ -1,59 +1,44 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Edge, Node } from "reactflow";
-import ReactFlow, { Background, BackgroundVariant, Controls, MarkerType } from "reactflow";
-import "reactflow/dist/style.css";
 import {
   subscribeToEventStream,
   type EventSnapshot,
   type TicketSnapshot,
 } from "@/lib/eventStreamClient";
-import type {
-  AuditLogEntry,
-  EvidenceNode,
-  OpsTicket,
-  ResolutionStep,
-  ResolutionStepStatus,
-  Sme,
-  TicketStatus,
-} from "@/lib/types";
-
-type TicketFromApi = TicketSnapshot;
+import type { OpsTicket } from "@/lib/types";
 
 type TicketUiState = {
-  unread: boolean;
-  status: TicketStatus;
-  steps: ResolutionStep[];
-  audit: AuditLogEntry[];
+  reviewedStepIds: Record<string, boolean>;
+  authorized: boolean;
 };
 
-const STATUS_FLOW: ResolutionStepStatus[] = ["Pending", "In Progress", "Complete"];
-
-const sourceStyles: Record<EvidenceNode["sourceType"], { border: string; bg: string }> = {
-  ticket: { border: "#f0a500", bg: "rgba(240, 165, 0, 0.12)" },
-  jira: { border: "#00a4ff", bg: "rgba(0, 164, 255, 0.12)" },
-  slack: { border: "#52d273", bg: "rgba(82, 210, 115, 0.12)" },
-  confluence: { border: "#f97316", bg: "rgba(249, 115, 22, 0.12)" },
-  regulatory: { border: "#ff5b5b", bg: "rgba(255, 91, 91, 0.12)" },
+type EvidenceLink = {
+  id: string;
+  label: string;
 };
 
-function relativeTime(iso: string): string {
-  const ms = Date.now() - Date.parse(iso);
-  const sec = Math.max(1, Math.floor(ms / 1000));
-  if (sec < 60) {
-    return `${sec}s ago`;
-  }
-  const min = Math.floor(sec / 60);
-  if (min < 60) {
-    return `${min}m ago`;
-  }
-  const hr = Math.floor(min / 60);
-  return `${hr}h ago`;
-}
+const EVIDENCE_LINKS: EvidenceLink[] = [
+  {
+    id: "slack-nov-2024",
+    label: "Slack thread Nov 2024",
+  },
+  {
+    id: "jira-ops-8492",
+    label: "OPS-8492",
+  },
+  {
+    id: "postmortem-cusip-2024-11",
+    label: "post-mortem",
+  },
+];
 
-function formatClock(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-US", {
+function formatTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -66,86 +51,40 @@ function formatBlueprintLag(ticket: OpsTicket): string {
   return `${(lagMs / 1000).toFixed(1)}s`;
 }
 
-function createAudit(message: string, at?: string): AuditLogEntry {
-  return {
-    id: `audit-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
-    message,
-    at: at ?? new Date().toISOString(),
-  };
-}
-
 function initializeUiState(ticket: OpsTicket): TicketUiState {
   return {
-    unread: ticket.unread,
-    status: ticket.status,
-    steps: ticket.resolutionSteps.map((step) => ({ ...step })),
-    audit: [
-      createAudit(
-        `Ticket ingested. Blueprint produced ${formatBlueprintLag(ticket)} after ingestion.`,
-        ticket.ingestedAt,
-      ),
-    ],
+    reviewedStepIds: ticket.resolutionSteps.reduce<Record<string, boolean>>((acc, step) => {
+      acc[step.id] = step.reviewed;
+      return acc;
+    }, {}),
+    authorized: ticket.status === "Authorized",
   };
 }
 
-function jsonSyntaxHighlight(input: string): string {
-  const escaped = input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  return escaped
-    .replace(
-      /(\"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\\"])*\")(?=\s*:)/g,
-      '<span class="json-key">$1</span>',
-    )
-    .replace(
-      /(:\s*)(\"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\\"])*\")/g,
-      '$1<span class="json-string">$2</span>',
-    )
-    .replace(/\b(true|false|null)\b/g, '<span class="json-bool">$1</span>')
-    .replace(/\b(-?\d+(?:\.\d+)?)\b/g, '<span class="json-number">$1</span>');
-}
-
-function buildDmDraft(ticket: OpsTicket, sme: Sme): string {
-  return [
-    `Hey ${sme.name.split(" ")[0]} - looking for a quick assist on ${ticket.id}.`,
-    `Blueprint diagnosis: ${ticket.diagnosis}`,
-    `Raw code: ${ticket.rawError}`,
-    `Product: ${ticket.product}`,
-    `Fast context: ${ticket.evidenceNodes[1]?.documentRef ?? "Historical references attached"}.`,
-    "Can you sanity-check the pathway before we authorize?",
-  ].join("\n");
-}
-
-function parseStepIndex(stepId: string): number {
-  const parts = stepId.split("-");
-  const maybeIndex = Number.parseInt(parts[parts.length - 1], 10);
-  return Number.isFinite(maybeIndex) ? maybeIndex : 0;
+function firstPayload(ticket: OpsTicket): string | null {
+  return ticket.resolutionSteps.find((step) => step.payloadJson)?.payloadJson ?? null;
 }
 
 export default function ContextGuardianDashboard() {
-  const [tickets, setTickets] = useState<TicketFromApi[]>([]);
+  const [tickets, setTickets] = useState<TicketSnapshot[]>([]);
   const [ticketUi, setTicketUi] = useState<Record<string, TicketUiState>>({});
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [incomingIds, setIncomingIds] = useState<string[]>([]);
-  const [selectedGraphNode, setSelectedGraphNode] = useState<EvidenceNode | null>(null);
-  const [dmTarget, setDmTarget] = useState<Sme | null>(null);
-  const [copiedStepId, setCopiedStepId] = useState<string | null>(null);
+  const [openTicketId, setOpenTicketId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const applySnapshot = useCallback((snapshot: EventSnapshot) => {
     setTickets((previous) => {
       const previousIds = new Set(previous.map((ticket) => ticket.id));
-      const newIds = snapshot.tickets
+      const nextNewIds = snapshot.tickets
         .map((ticket) => ticket.id)
         .filter((ticketId) => !previousIds.has(ticketId));
 
-      if (newIds.length > 0) {
-        setIncomingIds((current) => Array.from(new Set([...current, ...newIds])));
-        setTimeout(() => {
-          setIncomingIds((current) => current.filter((id) => !newIds.includes(id)));
-        }, 1_400);
+      if (nextNewIds.length > 0) {
+        setIncomingIds((current) => Array.from(new Set([...current, ...nextNewIds])));
+        window.setTimeout(() => {
+          setIncomingIds((current) => current.filter((id) => !nextNewIds.includes(id)));
+        }, 1_100);
       }
 
       return snapshot.tickets;
@@ -153,122 +92,43 @@ export default function ContextGuardianDashboard() {
 
     setTicketUi((previous) => {
       const nextState = { ...previous };
-
       for (const ticket of snapshot.tickets) {
         if (!nextState[ticket.id]) {
           nextState[ticket.id] = initializeUiState(ticket);
         }
       }
-
       return nextState;
-    });
-
-    setSelectedTicketId((current) => {
-      if (current) {
-        return current;
-      }
-      return snapshot.tickets[0]?.id ?? null;
     });
   }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeToEventStream(applySnapshot, "polling");
-
-    const ticker = window.setInterval(() => {
+    const clockTick = window.setInterval(() => {
       setNowMs(Date.now());
     }, 1_000);
 
     return () => {
       unsubscribe();
-      window.clearInterval(ticker);
+      window.clearInterval(clockTick);
     };
   }, [applySnapshot]);
 
-  useEffect(() => {
-    setSelectedGraphNode(null);
-  }, [selectedTicketId]);
-
-  const selectedTicket = useMemo(
-    () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? tickets[0] ?? null,
-    [tickets, selectedTicketId],
+  const openTicket = useMemo(
+    () => tickets.find((ticket) => ticket.id === openTicketId) ?? null,
+    [tickets, openTicketId],
   );
 
-  const selectedUi = selectedTicket ? ticketUi[selectedTicket.id] : undefined;
+  const openTicketUi = openTicket ? ticketUi[openTicket.id] : undefined;
 
-  const isSelectedReady = Boolean(
-    selectedTicket && Date.parse(selectedTicket.blueprintGeneratedAt) <= nowMs,
+  const readyToOpen = useCallback(
+    (ticket: TicketSnapshot) => Date.parse(ticket.blueprintGeneratedAt) <= nowMs,
+    [nowMs],
   );
 
-  const canAuthorize = Boolean(
-    selectedUi && selectedUi.steps.length > 0 && selectedUi.steps.every((step) => step.reviewed),
-  );
-
-  const flowNodes: Node[] = useMemo(() => {
-    if (!selectedTicket) {
-      return [];
-    }
-
-    return selectedTicket.evidenceNodes.map((node) => ({
-      id: node.id,
-      position: node.position,
-      data: {
-        label: `${node.label}\n${node.documentRef}`,
-      },
-      style: {
-        border: `1px solid ${sourceStyles[node.sourceType].border}`,
-        background: sourceStyles[node.sourceType].bg,
-        color: "#e8eaed",
-        fontFamily: "var(--font-data)",
-        fontSize: 11,
-        borderRadius: 0,
-        lineHeight: 1.4,
-        whiteSpace: "pre-line",
-        padding: "8px 10px",
-        width: 220,
-      },
-    }));
-  }, [selectedTicket]);
-
-  const flowEdges: Edge[] = useMemo(() => {
-    if (!selectedTicket) {
-      return [];
-    }
-
-    return selectedTicket.evidenceEdges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      label: edge.label,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: "#7a818a",
-      },
-      style: {
-        stroke: "#6c737c",
-        strokeWidth: 1.4,
-      },
-      labelStyle: {
-        fill: "#b4bbc3",
-        fontFamily: "var(--font-ui)",
-        fontSize: 10,
-      },
-      labelBgPadding: [6, 4],
-      labelBgStyle: {
-        fill: "#1a1f24",
-        stroke: "#353c45",
-      },
-    }));
-  }, [selectedTicket]);
-
-  const onSelectTicket = useCallback((ticketId: string) => {
-    setSelectedTicketId(ticketId);
+  const markReviewed = useCallback((ticketId: string, stepId: string, value: boolean) => {
     setTicketUi((previous) => {
       const current = previous[ticketId];
       if (!current) {
-        return previous;
-      }
-
-      if (!current.unread) {
         return previous;
       }
 
@@ -276,381 +136,213 @@ export default function ContextGuardianDashboard() {
         ...previous,
         [ticketId]: {
           ...current,
-          unread: false,
-          audit: [createAudit("Operator opened blueprint context."), ...current.audit],
+          reviewedStepIds: {
+            ...current.reviewedStepIds,
+            [stepId]: value,
+          },
         },
       };
     });
   }, []);
 
-  const updateSelectedTicket = useCallback(
-    (mutate: (current: TicketUiState) => TicketUiState) => {
-      if (!selectedTicket) {
-        return;
+  const authorize = useCallback((ticketId: string) => {
+    setTicketUi((previous) => {
+      const current = previous[ticketId];
+      if (!current) {
+        return previous;
       }
 
-      setTicketUi((previous) => {
-        const current = previous[selectedTicket.id];
-        if (!current) {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          [selectedTicket.id]: mutate(current),
-        };
-      });
-    },
-    [selectedTicket],
-  );
-
-  const cycleStepStatus = useCallback(
-    (stepId: string) => {
-      updateSelectedTicket((current) => {
-        const nextSteps = current.steps.map((step) => {
-          if (step.id !== stepId) {
-            return step;
-          }
-          const index = STATUS_FLOW.indexOf(step.status);
-          const nextStatus = STATUS_FLOW[(index + 1) % STATUS_FLOW.length];
-          return {
-            ...step,
-            status: nextStatus,
-          };
-        });
-
-        const changedStep = nextSteps.find((step) => step.id === stepId);
-        return {
+      return {
+        ...previous,
+        [ticketId]: {
           ...current,
-          steps: nextSteps,
-          audit: [
-            createAudit(
-              `Resolution step ${parseStepIndex(stepId)} status set to ${changedStep?.status ?? "Pending"}.`,
-            ),
-            ...current.audit,
-          ],
-        };
-      });
-    },
-    [updateSelectedTicket],
-  );
+          authorized: true,
+        },
+      };
+    });
+  }, []);
 
-  const toggleStepReview = useCallback(
-    (stepId: string) => {
-      updateSelectedTicket((current) => {
-        const nextSteps = current.steps.map((step) =>
-          step.id === stepId ? { ...step, reviewed: !step.reviewed } : step,
-        );
-
-        const changedStep = nextSteps.find((step) => step.id === stepId);
-        return {
-          ...current,
-          steps: nextSteps,
-          audit: [
-            createAudit(
-              `Resolution step ${parseStepIndex(stepId)} review ${changedStep?.reviewed ? "confirmed" : "removed"}.`,
-            ),
-            ...current.audit,
-          ],
-        };
-      });
-    },
-    [updateSelectedTicket],
-  );
-
-  const onAuthorize = useCallback(() => {
-    updateSelectedTicket((current) => ({
-      ...current,
-      status: "Authorized",
-      audit: [createAudit("Resolution authorized."), ...current.audit],
-    }));
-  }, [updateSelectedTicket]);
-
-  const onFlagForReview = useCallback(() => {
-    updateSelectedTicket((current) => ({
-      ...current,
-      status: "Flagged for Human Review",
-      audit: [createAudit("Ticket flagged for human review."), ...current.audit],
-    }));
-  }, [updateSelectedTicket]);
-
-  const onCopyPayload = useCallback(async (step: ResolutionStep) => {
-    if (!step.payloadJson) {
-      return;
-    }
-
-    await navigator.clipboard.writeText(step.payloadJson);
-    setCopiedStepId(step.id);
+  const copyPayload = useCallback(async (payload: string) => {
+    await navigator.clipboard.writeText(payload);
+    setCopied(true);
     window.setTimeout(() => {
-      setCopiedStepId((current) => (current === step.id ? null : current));
-    }, 1_500);
+      setCopied(false);
+    }, 1_100);
   }, []);
 
   return (
     <main className="context-shell">
-      <div className="panel panel-left">
+      <section className="panel panel-left">
         <div className="panel-header">
           <p className="panel-eyebrow">Live Event Stream</p>
         </div>
 
         <div className="stream-scroll">
+          {tickets.length === 0 && (
+            <div className="stream-empty">Awaiting HTTP ingest events.</div>
+          )}
+
           {tickets.map((ticket) => {
-            const ready = Date.parse(ticket.blueprintGeneratedAt) <= nowMs;
-            const isSelected = selectedTicket?.id === ticket.id;
-            const uiState = ticketUi[ticket.id];
+            const isReady = readyToOpen(ticket);
 
             return (
               <button
                 key={ticket.id}
                 type="button"
-                onClick={() => onSelectTicket(ticket.id)}
-                className={`event-card ${isSelected ? "event-card-selected" : ""} ${incomingIds.includes(ticket.id) ? "slide-in-top" : ""}`}
+                className={`event-card ${incomingIds.includes(ticket.id) ? "slide-in-top" : ""} ${
+                  isReady ? "event-card-ready" : ""
+                }`}
+                onClick={() => {
+                  if (isReady) {
+                    setOpenTicketId(ticket.id);
+                  }
+                }}
               >
-                <div className="event-card-top">
-                  <span className="event-id">{ticket.id}</span>
-                  {uiState?.unread && <span className="unread-dot" aria-hidden />}
-                </div>
-
+                <p className="event-id">{ticket.id}</p>
                 <p className="event-raw">{ticket.rawError}</p>
+                <p className="event-ingested">{formatTimestamp(ticket.ingestedAt)}</p>
 
-                <div className="event-times">
-                  <span>Ingested {formatClock(ticket.ingestedAt)}</span>
-                  <span>Blueprint +{formatBlueprintLag(ticket)}</span>
-                </div>
-
-                <div className="event-bottom-row">
-                  {!ready ? (
+                <div className="event-status-row">
+                  {!isReady ? (
                     <span className="processing-badge">
-                      <span className="processing-pulse" /> Processing
+                      <span className="processing-pulse" aria-hidden />
+                      Processing
                     </span>
                   ) : (
                     <span className="ready-badge">Blueprint Ready</span>
                   )}
-                  <span className="muted">{relativeTime(ticket.ingestedAt)}</span>
                 </div>
               </button>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      <div className="panel panel-center">
-        {!selectedTicket ? (
-          <div className="empty-state">No tickets yet.</div>
-        ) : (
-          <>
-            {!isSelectedReady ? (
-              <section className="processing-state">
-                <p className="panel-eyebrow">Inference Blueprint</p>
-                <h2>{selectedTicket.id} is being pre-diagnosed</h2>
+      <section className="panel panel-center">
+        <div className="waiting-state">
+          <p>Monitoring operational stream</p>
+          <span className="heartbeat" aria-hidden />
+        </div>
+      </section>
+
+      <section className="panel panel-right">
+        <div className="waiting-state">
+          <p>Monitoring operational stream</p>
+          <span className="heartbeat" aria-hidden />
+        </div>
+      </section>
+
+      {openTicket && openTicketUi && (
+        <div className="blueprint-overlay" role="dialog" aria-modal="true">
+          <div className="blueprint-modal">
+            <header className="blueprint-header">
+              <p className="blueprint-title">Inference Blueprint | {openTicket.id}</p>
+              <button type="button" className="close-button" onClick={() => setOpenTicketId(null)}>
+                Close
+              </button>
+            </header>
+
+            <section className="blueprint-section timestamp-focus">
+              <p className="section-tag">1. Timestamp Differential</p>
+              <p className="lag-value">{formatBlueprintLag(openTicket)}</p>
+              <div className="timestamp-grid">
                 <p>
-                  Ingested at {formatClock(selectedTicket.ingestedAt)}. Blueprint expected at{" "}
-                  {formatClock(selectedTicket.blueprintGeneratedAt)} ({formatBlueprintLag(selectedTicket)}
-                  after ingest).
+                  <span>Ingested</span>
+                  <strong>{formatTimestamp(openTicket.ingestedAt)}</strong>
                 </p>
-              </section>
-            ) : (
-              <>
-                <section className="diagnosis-header">
-                  <p className="panel-eyebrow">Diagnosis Header</p>
-                  <h1>{selectedTicket.diagnosis}</h1>
-                  <div className="metadata-row">
-                    <span
-                      className={`meta-badge severity-${selectedTicket.severity.toLowerCase()}`}
-                    >
-                      {selectedTicket.severity}
-                    </span>
-                    <span className="meta-badge">{selectedTicket.accountType}</span>
-                    <span className="meta-badge">{selectedTicket.product}</span>
-                    <span className="meta-badge">
-                      Blueprint gap: {formatBlueprintLag(selectedTicket)}
-                    </span>
-                  </div>
-                </section>
+                <p>
+                  <span>Blueprint Ready</span>
+                  <strong>{formatTimestamp(openTicket.blueprintGeneratedAt)}</strong>
+                </p>
+              </div>
+              <p className="timestamp-claim">Generated before first human view.</p>
+            </section>
 
-                <section className="resolution-section">
-                  <div className="section-title-row">
-                    <p className="panel-eyebrow">Resolution Pathway</p>
-                  </div>
+            <section className="blueprint-section">
+              <p className="section-tag">2. Diagnosis</p>
+              <p className="raw-code">{openTicket.rawError}</p>
+              <p className="diagnosis-text">{openTicket.diagnosis}</p>
+            </section>
 
-                  <ol className="steps-list">
-                    {(selectedUi?.steps ?? []).map((step) => (
-                      <li key={step.id} className="step-row">
-                        <div className="step-main">
-                          <div className="step-title-row">
-                            <p className="step-title">{step.title}</p>
-                            <button
-                              type="button"
-                              className="status-toggle"
-                              onClick={() => cycleStepStatus(step.id)}
-                            >
-                              {step.status}
-                            </button>
-                          </div>
-                          <p className="step-details">{step.details}</p>
-
-                          <div className="step-controls">
-                            <button
-                              type="button"
-                              className={`review-toggle ${step.reviewed ? "reviewed" : ""}`}
-                              onClick={() => toggleStepReview(step.id)}
-                            >
-                              {step.reviewed ? "Reviewed" : "Mark Reviewed"}
-                            </button>
-                          </div>
-                        </div>
-
-                        {step.payloadJson && (
-                          <div className="payload-block-wrap">
-                            <div className="payload-header">
-                              <span>Pre-drafted payload</span>
-                              <button type="button" onClick={() => onCopyPayload(step)}>
-                                {copiedStepId === step.id ? "Copied" : "Copy"}
-                              </button>
-                            </div>
-                            <pre
-                              className="payload-block"
-                              dangerouslySetInnerHTML={{
-                                __html: jsonSyntaxHighlight(step.payloadJson),
-                              }}
-                            />
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-
-                <section className="evidence-section">
-                  <p className="panel-eyebrow">Evidence Graph</p>
-                  <div className="graph-panel">
-                    <ReactFlow
-                      nodes={flowNodes}
-                      edges={flowEdges}
-                      fitView
-                      minZoom={0.5}
-                      maxZoom={1.6}
-                      onNodeClick={(_, node) => {
-                        const evidence = selectedTicket.evidenceNodes.find(
-                          (candidate) => candidate.id === node.id,
-                        );
-                        setSelectedGraphNode(evidence ?? null);
-                      }}
-                      className="evidence-flow"
-                    >
-                      <Background
-                        gap={14}
-                        size={1}
-                        color="rgba(138, 148, 158, 0.18)"
-                        variant={BackgroundVariant.Dots}
-                      />
-                      <Controls className="flow-controls" showInteractive={false} />
-                    </ReactFlow>
-
-                    {selectedGraphNode && (
-                      <div className="node-popover">
-                        <p className="node-popover-label">
-                          {selectedGraphNode.label} | {selectedGraphNode.documentRef}
-                        </p>
-                        <p>{selectedGraphNode.snippet}</p>
-                      </div>
-                    )}
-                  </div>
-                </section>
-
-                <section className="sme-section">
-                  <p className="panel-eyebrow">Historical SMEs</p>
-                  <div className="sme-list">
-                    {selectedTicket.smes.map((sme) => (
-                      <div key={sme.id} className="sme-row">
-                        <div>
-                          <p className="sme-name">{sme.name}</p>
-                          <p className="sme-meta">
-                            {sme.role} | {sme.status}
-                          </p>
-                        </div>
-
-                        {sme.status === "Active" ? (
-                          <button type="button" onClick={() => setDmTarget(sme)} className="dm-button">
-                            Draft Context-Loaded DM
-                          </button>
-                        ) : (
-                          <span className="departed-pill">Departed</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="panel panel-right">
-        <section className="actions-section">
-          <p className="panel-eyebrow">Audit & Actions</p>
-
-          {selectedTicket && selectedUi && (
-            <>
-              <p className="status-line">
-                Ticket status: <span className="status-pill">{selectedUi.status}</span>
+            <section className="blueprint-section">
+              <p className="section-tag">3. Evidence Summary</p>
+              <p className="evidence-sentence">
+                This diagnosis draws from 3 sources:{" "}
+                {EVIDENCE_LINKS.map((link, index) => (
+                  <span key={link.id}>
+                    <Link href={`/knowledge-base?artifact=${link.id}#${link.id}`} className="evidence-link">
+                      [{link.label}]
+                    </Link>
+                    {index < EVIDENCE_LINKS.length - 1 ? ", " : "."}
+                  </span>
+                ))}
               </p>
+
+              <div className="node-chain" aria-hidden>
+                <span>Ticket</span>
+                <i />
+                <span>Slack</span>
+                <i />
+                <span>OPS-8492</span>
+                <i />
+                <span>Post-Mortem</span>
+              </div>
+            </section>
+
+            <section className="blueprint-section">
+              <p className="section-tag">4. Resolution Pathway</p>
+              <ol className="resolution-steps">
+                {openTicket.resolutionSteps.map((step) => {
+                  const checked = openTicketUi.reviewedStepIds[step.id] ?? false;
+                  return (
+                    <li key={step.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            markReviewed(openTicket.id, step.id, event.currentTarget.checked)
+                          }
+                        />
+                        <span>{step.details}</span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              {firstPayload(openTicket) && (
+                <div className="payload-wrap">
+                  <div className="payload-header">
+                    <span>JSON payload</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const payload = firstPayload(openTicket);
+                        if (payload) {
+                          void copyPayload(payload);
+                        }
+                      }}
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <pre>{firstPayload(openTicket)}</pre>
+                </div>
+              )}
 
               <button
                 type="button"
                 className="authorize-button"
-                disabled={!canAuthorize}
-                onClick={onAuthorize}
+                disabled={
+                  openTicketUi.authorized ||
+                  !openTicket.resolutionSteps.every((step) => openTicketUi.reviewedStepIds[step.id])
+                }
+                onClick={() => authorize(openTicket.id)}
               >
-                Authorize Resolution
+                {openTicketUi.authorized ? "Resolution Authorized" : "Authorize Resolution"}
               </button>
-              {!canAuthorize && (
-                <p className="hint-text">All resolution steps must be marked reviewed first.</p>
-              )}
-
-              <button type="button" className="flag-button" onClick={onFlagForReview}>
-                Flag for Human Review
-              </button>
-
-              <div className="confidence-wrap">
-                <p className="confidence-label">
-                  Confidence: {(selectedTicket.confidenceScore * 100).toFixed(0)}%
-                </p>
-                <div className="confidence-track">
-                  <div
-                    className="confidence-value"
-                    style={{ width: `${Math.round(selectedTicket.confidenceScore * 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="audit-log-wrap">
-                <p className="audit-title">Audit log</p>
-                <div className="audit-items">
-                  {selectedUi.audit.map((entry) => (
-                    <div key={entry.id} className="audit-item">
-                      <span>{formatClock(entry.at)}</span>
-                      <p>{entry.message}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </section>
-      </div>
-
-      {selectedTicket && dmTarget && (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal-card">
-            <div className="modal-header">
-              <p>Draft Context-Loaded DM</p>
-              <button type="button" onClick={() => setDmTarget(null)}>
-                Close
-              </button>
-            </div>
-            <pre className="modal-message">{buildDmDraft(selectedTicket, dmTarget)}</pre>
+            </section>
           </div>
         </div>
       )}

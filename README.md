@@ -44,13 +44,16 @@ curl -X POST http://localhost:3000/api/ingest \
 
 The dashboard polls `GET /api/events` and animates new cards into the stream.
 
-## Data Model
+## API Surfaces
 
-Phase 1 dummy data is defined in:
+- `POST /api/ingest`: ingest a raw event into the live stream.
+- `GET /api/events`: stream snapshot used by the dashboard poller.
+- `GET /api/tickets`: mock contract endpoint returning a `BlueprintType` object for `ERR_739_CUSIP_MISMATCH`.
 
-- `lib/dummyData.ts`
+## Data Sources
 
-It contains 5 seeded tickets, including hero case `ERR_739_CUSIP_MISMATCH` with TFSA transfer + Shaw/Rogers merger context.
+- `lib/dummyData.ts`: blueprint contract data used by ingestion and the mock `/api/tickets` endpoint.
+- `lib/knowledgeBase.ts`: server-side knowledge artifacts (Slack thread, Jira OPS-8492, post-mortem) rendered by `/knowledge-base`.
 
 ## Phase 2 Integration Hooks (Architected, Not Implemented)
 

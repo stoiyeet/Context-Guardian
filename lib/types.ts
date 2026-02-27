@@ -60,6 +60,8 @@ export interface TicketBlueprint {
   smes: Sme[];
 }
 
+export type BlueprintType = TicketBlueprint;
+
 export interface OpsTicket extends TicketBlueprint {
   id: string;
   rawError: string;

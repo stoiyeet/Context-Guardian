@@ -1,7 +1,7 @@
 // PHASE 2: LLM INTEGRATION POINT
 import {
   buildGenericBlueprint,
-  cloneBlueprintFromTicket,
+  getErr739Blueprint,
 } from "@/lib/dummyData";
 import type {
   EvidenceEdge,
@@ -47,8 +47,10 @@ function cloneTicket(ticket: OpsTicket): OpsTicket {
 }
 
 function getTemplateBlueprint(rawError: string): TicketBlueprint {
+  if (rawError === "ERR_739_CUSIP_MISMATCH") {
+    return getErr739Blueprint();
+  }
   return buildGenericBlueprint(rawError);
-
 }
 
 function withTicketScopedIds(ticketId: string, blueprint: TicketBlueprint): TicketBlueprint {
@@ -151,7 +153,7 @@ export function isBlueprintReady(ticket: OpsTicket): boolean {
 }
 
 export function resetTicketStore(): void {
-  tickets = []
+  tickets = [];
   nextTicketNumber =
     tickets
       .map((ticket) => Number.parseInt(ticket.id.replace("OPS-", ""), 10))
