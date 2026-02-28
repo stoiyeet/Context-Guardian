@@ -604,24 +604,25 @@ function buildFallbackSteps(input: InferencePipelineInput, unknownPattern: boole
     return [
       {
         id: "step-route-1",
-        title: "Capture enriched triage context",
+        title: "Capture triage baseline",
         details:
-          "Validate the raw error packet, systems touched, and account context before any retried transfer action.",
+          "Identify where the failure occurred, what action failed, and the last successful state in the transfer pipeline.",
         status: "Pending",
         reviewed: false,
       },
       {
         id: "step-route-2",
-        title: "Route to broad-domain SMEs",
+        title: "Route to cross-domain review",
         details:
-          "Escalate simultaneously to transfer infra and compliance routing owners with all known context and timestamps.",
+          "Request transfer-infra and compliance review with full context before any irreversible operation.",
         status: "Pending",
         reviewed: false,
       },
       {
         id: "step-route-3",
-        title: "Prepare authorizable containment payload",
-        details: "Apply a scoped queue hold on the transfer to prevent duplicate or unsafe retries.",
+        title: "Apply controlled containment action",
+        details:
+          "Execute a scoped containment payload so the failing request is stabilized while review is in progress.",
         status: "Pending",
         reviewed: false,
         payloadJson: JSON.stringify(
@@ -638,8 +639,9 @@ function buildFallbackSteps(input: InferencePipelineInput, unknownPattern: boole
       },
       {
         id: "step-route-4",
-        title: "Record memory handoff note",
-        details: "Capture final resolution notes; this incident will seed a new organizational pattern.",
+        title: "Close triage and record outcome",
+        details:
+          "Confirm whether the previously failing action now succeeds, then capture audit notes and memory updates.",
         status: "Pending",
         reviewed: false,
       },
@@ -649,24 +651,27 @@ function buildFallbackSteps(input: InferencePipelineInput, unknownPattern: boole
   return [
     {
       id: "step-1",
-      title: "Validate primary mismatch context",
-      details: "Confirm transfer payload, account metadata, and affected system pair before any retry.",
+      title: "Identify failure locus",
+      details:
+        "Confirm the pipeline stage of failure, attempted action, and last successful state before remediation.",
       status: "Pending",
       reviewed: false,
     },
     {
       id: "step-2",
-      title: "Apply controlled remediation payload",
-      details: "Execute scoped corrective action and annotate compliance rationale where required.",
+      title: "Execute controlled remediation",
+      details:
+        "Apply an approved remediation payload scoped to this ticket and capture rationale for audit traceability.",
       status: "Pending",
       reviewed: false,
       payloadJson: JSON.stringify(
         {
-          tool: "ledger.updateHoldingReference",
+          tool: "operations.executeRemediation",
           ticketId: input.ticketId,
-          accountId: "PENDING_LOOKUP",
-          updates: [{ field: "reference", previous: "legacy", next: "canonical" }],
-          complianceNote: "Generated from Context Guardian inference pipeline.",
+          remediationType: "scoped_normalization_fix",
+          scope: "single_ticket",
+          approvalRequired: true,
+          note: "Generated from Context Guardian deterministic checklist.",
         },
         null,
         2,
@@ -674,29 +679,21 @@ function buildFallbackSteps(input: InferencePipelineInput, unknownPattern: boole
     },
     {
       id: "step-3",
-      title: "Re-run transfer path",
-      details: "Re-submit through ATON/bridge path and confirm acceptance at receiving side.",
+      title: "Validate recovered execution",
+      details:
+        "Re-run the previously failing operation and confirm the exact action now succeeds without side effects.",
+      status: "Pending",
+      reviewed: false,
+    },
+    {
+      id: "step-4",
+      title: "Finalize cleanup and handoff",
+      details:
+        "Complete cleanup, update documentation or runbooks if needed, and append final audit notes for memory.",
       status: "Pending",
       reviewed: false,
     },
   ];
-}
-
-function canonicalStepKey(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function isGenericResolutionText(text: string): boolean {
-  const lower = text.toLowerCase();
-  return (
-    lower.includes("review inferred remediation path") ||
-    lower.includes("review inferred") ||
-    lower === "step" ||
-    lower === "review remediation path"
-  );
 }
 
 function sanitizeResolutionSteps(
@@ -704,82 +701,35 @@ function sanitizeResolutionSteps(
   unknownPattern: boolean,
   candidates: ResolutionStep[],
 ): ResolutionStep[] {
+  void candidates;
   const fallback = buildFallbackSteps(input, unknownPattern);
-  const unique = new Set<string>();
-  const cleaned: ResolutionStep[] = [];
-
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index];
-    const fallbackStep = fallback[index % fallback.length];
-    const detailsBase = (candidate.details || "").trim();
-    const titleBase = (candidate.title || "").trim();
-    const details = !detailsBase || isGenericResolutionText(detailsBase)
-      ? fallbackStep.details
-      : detailsBase;
-    const title = !titleBase || /^step\s*\d+$/i.test(titleBase)
-      ? fallbackStep.title
-      : titleBase;
-    const key = canonicalStepKey(details);
-    if (!key || unique.has(key)) {
-      continue;
-    }
-    unique.add(key);
-    cleaned.push({
-      ...candidate,
-      title,
-      details,
-      status: "Pending",
-      reviewed: false,
-    });
-  }
-
-  const minCount = unknownPattern ? 4 : 3;
-  for (const fallbackStep of fallback) {
-    if (cleaned.length >= minCount) {
-      break;
-    }
-    const key = canonicalStepKey(fallbackStep.details);
-    if (unique.has(key)) {
-      continue;
-    }
-    unique.add(key);
-    cleaned.push({
-      ...fallbackStep,
-      status: "Pending",
-      reviewed: false,
-    });
-  }
-
-  const payloadIndices = cleaned
+  const payloadIndices = fallback
     .map((step, index) => (step.payloadJson ? index : -1))
     .filter((index) => index >= 0);
 
   if (payloadIndices.length === 0) {
-    const payloadFallback = fallback.find((step) => Boolean(step.payloadJson));
-    if (payloadFallback) {
-      const insertAt = Math.min(1, cleaned.length);
-      cleaned.splice(insertAt, 0, {
-        ...payloadFallback,
-        status: "Pending",
-        reviewed: false,
-      });
-    }
-  } else if (payloadIndices.length > 1) {
-    const keepIndex = payloadIndices[0];
-    for (const payloadIndex of payloadIndices.slice(1)) {
-      cleaned[payloadIndex] = {
-        ...cleaned[payloadIndex],
-        payloadJson: undefined,
-      };
-    }
-    cleaned[keepIndex] = {
-      ...cleaned[keepIndex],
+    fallback.splice(1, 0, {
+      id: "step-payload",
+      title: "Execute controlled remediation",
+      details:
+        "Apply an approved payload scoped to the current ticket and capture approval notes.",
       status: "Pending",
       reviewed: false,
-    };
+      payloadJson: JSON.stringify(
+        {
+          tool: "operations.executeRemediation",
+          ticketId: input.ticketId,
+          remediationType: "scoped_normalization_fix",
+          scope: "single_ticket",
+          approvalRequired: true,
+        },
+        null,
+        2,
+      ),
+    });
   }
 
-  return cleaned.slice(0, 6).map((step, index) => ({
+  return fallback.slice(0, 6).map((step, index) => ({
     ...step,
     id: `step-${index + 1}`,
     status: "Pending",
@@ -1160,29 +1110,7 @@ function toBlueprintFromSynthesis(
     : ensureDiagnosisSpecificity(diagnosis, input, citations);
 
   const fallbackSteps = buildFallbackSteps(input, unknownPattern);
-  const llmSteps = llm?.resolutionSteps?.slice(0, 6).map((step, index) => ({
-    id: `step-${index + 1}`,
-    title: step.title || `Step ${index + 1}`,
-    details: step.details || step.title || "Review inferred remediation path.",
-    status: "Pending" as const,
-    reviewed: false,
-    payloadJson: step.requiresPayload
-      ? JSON.stringify(
-          step.payload ?? {
-            tool: "queue.applyManualCorrection",
-            ticketId: input.ticketId,
-            note: "Generated payload missing; fallback payload used.",
-          },
-          null,
-          2,
-        )
-      : undefined,
-  }));
-  const resolutionSteps = sanitizeResolutionSteps(
-    input,
-    unknownPattern,
-    llmSteps && llmSteps.length > 0 ? llmSteps : fallbackSteps,
-  );
+  const resolutionSteps = sanitizeResolutionSteps(input, unknownPattern, fallbackSteps);
 
   const resolutionEvidenceHits = citations.filter((citation) => citation.connectionType === "same resolution path").length;
   const resolutionPathConfidence = clamp01(Math.min(1, 0.35 + resolutionEvidenceHits * 0.2));

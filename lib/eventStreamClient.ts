@@ -127,6 +127,119 @@ function mergeWithPersisted(
   };
 }
 
+function isTicketReady(ticket: TicketSnapshot, nowMs: number): boolean {
+  if (typeof ticket.blueprintReady === "boolean") {
+    return ticket.blueprintReady;
+  }
+  return Date.parse(ticket.blueprintGeneratedAt) <= nowMs;
+}
+
+type TicketInferenceApiResponse = {
+  diagnosis?: string;
+  severity?: OpsTicket["severity"];
+  accountType?: string;
+  product?: string;
+  confidenceScore?: number;
+  solutionSummary?: string | null;
+  priorResolutionTeam?: OpsTicket["priorResolutionTeam"];
+  draftMessage?: string;
+  resolutionSteps?: OpsTicket["resolutionSteps"];
+  evidenceNodes?: OpsTicket["evidenceNodes"];
+  evidenceEdges?: OpsTicket["evidenceEdges"];
+  smes?: OpsTicket["smes"];
+  inferenceMeta?: InferenceMetadata;
+  blueprintGeneratedAt?: string;
+};
+
+function buildInferenceRecoveryParams(
+  ticket: TicketSnapshot,
+  meta?: InferenceMetadata,
+): URLSearchParams {
+  const contextSummary = meta?.contextSummary;
+  const params = new URLSearchParams();
+  params.set("ticketId", ticket.id);
+  params.set("rawError", ticket.rawError);
+  params.set("description", contextSummary?.operatorNarrative ?? ticket.diagnosis ?? "");
+  params.set("pipelineStage", contextSummary?.pipelineStage ?? "intake-stage-unknown");
+  params.set(
+    "attemptedAction",
+    contextSummary?.attemptedAction ?? "processing transfer action with incomplete inference context",
+  );
+  params.set(
+    "lastSuccessfulState",
+    contextSummary?.lastSuccessfulState ?? "payload accepted prior to failing step",
+  );
+  params.set("sourceInstitution", contextSummary?.sourceInstitution ?? "Unknown Institution");
+  params.set(
+    "overContributionHistory",
+    contextSummary?.existingFlags.overContributionHistory ?? "unknown",
+  );
+  params.set("amlStatus", contextSummary?.existingFlags.amlStatus ?? "unknown");
+  params.set("pendingReviews", contextSummary?.existingFlags.pendingReviews.join(",") ?? "");
+  params.set("additionalSignals", contextSummary?.additionalSignals.join(",") ?? "");
+  params.set("accountType", ticket.accountType);
+  params.set("product", ticket.product);
+  params.set("severity", ticket.severity);
+  return params;
+}
+
+async function recoverInterruptedTicket(
+  ticket: TicketSnapshot,
+  meta?: InferenceMetadata,
+): Promise<{ ticket: TicketSnapshot; inferenceMeta?: InferenceMetadata } | null> {
+  const params = buildInferenceRecoveryParams(ticket, meta);
+  const response = await fetch(`/api/tickets?${params.toString()}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as TicketInferenceApiResponse;
+  const recovered: TicketSnapshot = {
+    ...ticket,
+    diagnosis: payload.diagnosis ?? ticket.diagnosis,
+    severity: payload.severity ?? ticket.severity,
+    accountType: payload.accountType ?? ticket.accountType,
+    product: payload.product ?? ticket.product,
+    confidenceScore:
+      typeof payload.confidenceScore === "number"
+        ? payload.confidenceScore
+        : ticket.confidenceScore,
+    solutionSummary:
+      payload.solutionSummary === undefined
+        ? ticket.solutionSummary
+        : payload.solutionSummary,
+    priorResolutionTeam: Array.isArray(payload.priorResolutionTeam)
+      ? payload.priorResolutionTeam
+      : ticket.priorResolutionTeam,
+    draftMessage:
+      typeof payload.draftMessage === "string"
+        ? payload.draftMessage
+        : ticket.draftMessage,
+    resolutionSteps: Array.isArray(payload.resolutionSteps)
+      ? payload.resolutionSteps
+      : ticket.resolutionSteps,
+    evidenceNodes: Array.isArray(payload.evidenceNodes)
+      ? payload.evidenceNodes
+      : ticket.evidenceNodes,
+    evidenceEdges: Array.isArray(payload.evidenceEdges)
+      ? payload.evidenceEdges
+      : ticket.evidenceEdges,
+    smes: Array.isArray(payload.smes) ? payload.smes : ticket.smes,
+    blueprintGeneratedAt:
+      typeof payload.blueprintGeneratedAt === "string"
+        ? payload.blueprintGeneratedAt
+        : new Date().toISOString(),
+    blueprintReady: true,
+  };
+
+  return {
+    ticket: recovered,
+    inferenceMeta: payload.inferenceMeta,
+  };
+}
+
 export async function fetchEventSnapshot(): Promise<EventSnapshot> {
   const response = await fetch("/api/events", {
     cache: "no-store",
@@ -149,6 +262,8 @@ export function subscribeToEventStream(
   }
 
   let active = true;
+  const recoveringTicketIds = new Set<string>();
+  const recoverRetryAfterMs = new Map<string, number>();
   const persisted = readPersistedSnapshot();
   if (persisted) {
     onSnapshot(persisted);
@@ -158,6 +273,60 @@ export function subscribeToEventStream(
     try {
       const snapshot = await fetchEventSnapshot();
       const merged = mergeWithPersisted(snapshot, readPersistedSnapshot());
+      const liveIds = new Set(snapshot.tickets.map((ticket) => ticket.id));
+      const now = Date.now();
+      const recoverable = merged.tickets.filter((ticket) => {
+        if (liveIds.has(ticket.id)) {
+          return false;
+        }
+        if (isTicketReady(ticket, now)) {
+          return false;
+        }
+        const retryAfter = recoverRetryAfterMs.get(ticket.id) ?? 0;
+        if (retryAfter > now || recoveringTicketIds.has(ticket.id)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (recoverable.length > 0) {
+        const recoveredResults = await Promise.all(
+          recoverable.map(async (ticket) => {
+            const meta = merged.inferenceByTicketId?.[ticket.id];
+            recoveringTicketIds.add(ticket.id);
+            try {
+              const recovered = await recoverInterruptedTicket(ticket, meta);
+              if (!recovered) {
+                recoverRetryAfterMs.set(ticket.id, Date.now() + 10_000);
+              } else {
+                recoverRetryAfterMs.delete(ticket.id);
+              }
+              return recovered ? { id: ticket.id, ...recovered } : null;
+            } catch {
+              recoverRetryAfterMs.set(ticket.id, Date.now() + 10_000);
+              return null;
+            } finally {
+              recoveringTicketIds.delete(ticket.id);
+            }
+          }),
+        );
+
+        for (const recovered of recoveredResults) {
+          if (!recovered) {
+            continue;
+          }
+          merged.tickets = merged.tickets.map((ticket) =>
+            ticket.id === recovered.id ? recovered.ticket : ticket,
+          );
+          if (recovered.inferenceMeta) {
+            merged.inferenceByTicketId = {
+              ...(merged.inferenceByTicketId ?? {}),
+              [recovered.id]: recovered.inferenceMeta,
+            };
+          }
+        }
+      }
+
       writePersistedSnapshot(merged);
       if (active) {
         onSnapshot(merged);

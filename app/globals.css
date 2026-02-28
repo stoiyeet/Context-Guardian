@@ -180,6 +180,9 @@ pre {
   font-family: var(--font-data);
   font-size: 12px;
   color: #edf1f5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .event-ingested {
