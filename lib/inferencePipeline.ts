@@ -552,12 +552,45 @@ function ensureDiagnosisSpecificity(
 function buildFallbackDraftMessage(
   input: InferencePipelineInput,
   team: SMEReference[],
+  solutionSummary?: string | null,
 ): string {
   const recipients = team.map((member) => member.name).join(", ") || "ops and infra reviewers";
-  const priorRef = team[0]
-    ? `Given your work on ${team[0].citationArtifactIds[0] ?? "the prior incident"}`
-    : "Based on prior incident ownership";
-  return `Ticket ${input.ticketId} is failing at ${input.context.pipelineStage} while ${input.context.attemptedAction}. The system diagnosed a probable precedent match and prepared a resolution pathway for review. Routing to ${recipients}. ${priorRef}, please review the proposed pathway and provide explicit go/no-go direction for authorization within 30 minutes.`;
+  const formatArtifactRef = (artifactId: string): string => {
+    const artifact = listKnowledgeArtifacts().find((entry) => entry.id === artifactId);
+    if (!artifact) {
+      return artifactId;
+    }
+    if (artifact.type === "jira") {
+      return artifact.ticketKey;
+    }
+    if (artifact.type === "slack") {
+      const monthYear = artifact.messages[0]
+        ? new Date(artifact.messages[0].timestamp).toLocaleDateString("en-US", {
+            month: "short",
+            year: "numeric",
+          })
+        : "unknown date";
+      return `Slack #${artifact.channel} (${monthYear})`;
+    }
+    return `post-mortem "${artifact.title}"`;
+  };
+  const priorInvolvement = team
+    .slice(0, 2)
+    .map((member) => {
+      const refs = member.citationArtifactIds.slice(0, 2).map(formatArtifactRef);
+      if (refs.length === 0) {
+        return `${member.name} helped on earlier transfer incidents`;
+      }
+      return `${member.name} worked on ${refs.join(" and ")}`;
+    })
+    .join("; ");
+  const resolutionContext = solutionSummary
+    ? `That prior case was resolved as follows: ${solutionSummary.split(".")[0]?.trim()}.`
+    : "";
+  const involvementLine = priorInvolvement
+    ? `I am reaching out because ${priorInvolvement}.`
+    : "";
+  return `Hi ${recipients}, ticket ${input.ticketId} failed at ${input.context.pipelineStage} while ${input.context.attemptedAction}, after last successful state ${input.context.lastSuccessfulState}. Context Guardian diagnosed a likely normalization issue in the bridge/validator path. ${involvementLine} ${resolutionContext}Could you review the normalization logic and confirm whether we should authorize the current remediation path today?`;
 }
 
 function parseSeverity(input: string | undefined): OpsTicket["severity"] {
@@ -926,7 +959,7 @@ async function synthesizeWithLlm(
         {
           role: "system",
           content:
-            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, solutionSummary, priorResolutionTeamIds, draftMessage, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English with no jargon and no hedging. If this matches precedent, explain exactly why: include pipeline stage, attempted action, and last successful state alignment. For every diagnosis claim include explicit citation labels in parentheses. solutionSummary must be 3-5 sentences, past tense, and fully grounded; if any sentence cannot be grounded in retrieved artifacts, omit it. If grounding is insufficient return solutionSummary as null. priorResolutionTeamIds must only contain IDs from directTeamCandidates. draftMessage must be professional and concise: include ticket ID, one-sentence situation summary, what system diagnosed, recipient-specific ask, reference prior involvement naturally, and close with clear action request. Each resolution step is one sentence and exactly one step requiresPayload=true with valid JSON payload. If context is weak or precedent is weak, set unknownPattern=true and do not fabricate.",
+            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, solutionSummary, priorResolutionTeamIds, draftMessage, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English with no jargon and no hedging. If this matches precedent, explain exactly why: include pipeline stage, attempted action, and last successful state alignment. For every diagnosis claim include explicit citation labels in parentheses. solutionSummary must be 3-5 sentences, past tense, and fully grounded; if any sentence cannot be grounded in retrieved artifacts, omit it. If grounding is insufficient return solutionSummary as null. priorResolutionTeamIds must only contain IDs from directTeamCandidates. draftMessage must read as a friendly request for help: include ticket ID, concise situation summary, what the system already diagnosed, recipient-specific ask to review normalization logic, and reference prior involvement naturally. If prior resolution context is available, mention what they did to solve it; if not, omit that part. End with a clear action request. Each resolution step is one sentence and exactly one step requiresPayload=true with valid JSON payload. If context is weak or precedent is weak, set unknownPattern=true and do not fabricate.",
         },
         {
           role: "user",
@@ -1026,7 +1059,9 @@ function toBlueprintFromSynthesis(
       confidenceScore: 0.5,
       solutionSummary: llm?.solutionSummary ?? null,
       priorResolutionTeam,
-      draftMessage: llm?.draftMessage ?? buildFallbackDraftMessage(input, priorResolutionTeam),
+      draftMessage:
+        llm?.draftMessage ??
+        buildFallbackDraftMessage(input, priorResolutionTeam, llm?.solutionSummary ?? null),
       resolutionSteps,
       evidenceNodes: graph.evidenceNodes,
       evidenceEdges: graph.evidenceEdges,

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import EvidenceGraph from "@/components/context-guardian/evidence-graph";
 import {
   subscribeToEventStream,
   type EventSnapshot,
@@ -17,33 +17,10 @@ type TicketUiState = {
   authorized: boolean;
 };
 
-type EvidenceLink = {
-  href: string;
-  label: string;
-};
-
 const SOLUTION_CONFIDENCE_THRESHOLD = 0.58;
 
 function confidencePercent(value: number): string {
   return `${Math.round(value * 100)}%`;
-}
-
-function evidenceLinksFromMeta(meta?: InferenceMetadata): EvidenceLink[] {
-  if (!meta || meta.evidenceCitations.length === 0) {
-    return [];
-  }
-  return meta.evidenceCitations.slice(0, 4).map((citation) => ({
-    href: citation.href,
-    label: citation.citation,
-  }));
-}
-
-function summaryEvidenceSentence(meta?: InferenceMetadata): string {
-  if (!meta || meta.evidenceCitations.length === 0) {
-    return "No strong historical artifact match was found.";
-  }
-  const citations = meta.evidenceCitations.slice(0, 3).map((citation) => citation.citation);
-  return `This diagnosis draws from ${citations.length} sources: ${citations.join(", ")}.`;
 }
 
 function canRenderSolutionSummary(ticket: OpsTicket | null, meta?: InferenceMetadata): boolean {
@@ -191,8 +168,6 @@ export default function ContextGuardianDashboard() {
   const modalPayload = modalTicket ? getPayload(modalTicket) : null;
   const selectedContributors = selectedTicket ? activeContributors(selectedTicket) : [];
   const modalContributors = modalTicket ? activeContributors(modalTicket) : [];
-  const selectedEvidenceLinks = evidenceLinksFromMeta(selectedInference);
-  const modalEvidenceLinks = evidenceLinksFromMeta(modalInference);
   const modalCanRenderSolution = canRenderSolutionSummary(modalTicket, modalInference);
   const modalPriorTeam = modalTicket?.priorResolutionTeam ?? [];
 
@@ -448,20 +423,11 @@ export default function ContextGuardianDashboard() {
             )}
 
             <section className="summary-block">
-              <p className="section-tag">Evidence Summary</p>
-              <p className="evidence-sentence">{summaryEvidenceSentence(selectedInference)}</p>
-              {selectedEvidenceLinks.length > 0 && (
-                <p className="evidence-sentence">
-                  {selectedEvidenceLinks.map((link, index) => (
-                    <span key={link.href}>
-                      <Link href={link.href} className="evidence-link">
-                        [{link.label}]
-                      </Link>
-                      {index < selectedEvidenceLinks.length - 1 ? ", " : "."}
-                    </span>
-                  ))}
-                </p>
-              )}
+              <p className="section-tag">Evidence Graph</p>
+              <p className="evidence-graph-hint">
+                Click a node to open the linked Slack thread, infra ticket, or post-mortem.
+              </p>
+              <EvidenceGraph ticket={selectedTicket} height={250} />
               {selectedInference?.similarityRationale.length ? (
                 <ol className="resolution-steps">
                   {selectedInference.similarityRationale.map((reason, index) => (
@@ -471,16 +437,6 @@ export default function ContextGuardianDashboard() {
                   ))}
                 </ol>
               ) : null}
-
-              <div className="node-chain" aria-hidden>
-                <span>Ticket</span>
-                <i />
-                <span>Slack</span>
-                <i />
-                <span>OPS-8492</span>
-                <i />
-                <span>Post-Mortem</span>
-              </div>
 
               <button
                 type="button"
@@ -680,20 +636,11 @@ export default function ContextGuardianDashboard() {
             </section>
 
             <section className="blueprint-section">
-              <p className="section-tag">3. Evidence Summary</p>
-              <p className="evidence-sentence">{summaryEvidenceSentence(modalInference)}</p>
-              {modalEvidenceLinks.length > 0 && (
-                <p className="evidence-sentence">
-                  {modalEvidenceLinks.map((link, index) => (
-                    <span key={link.href}>
-                      <Link href={link.href} className="evidence-link">
-                        [{link.label}]
-                      </Link>
-                      {index < modalEvidenceLinks.length - 1 ? ", " : "."}
-                    </span>
-                  ))}
-                </p>
-              )}
+              <p className="section-tag">3. Evidence Graph</p>
+              <p className="evidence-graph-hint">
+                Click a node to open the linked evidence instance.
+              </p>
+              <EvidenceGraph ticket={modalTicket} height={300} />
               {modalInference?.similarityRationale.length ? (
                 <ol className="resolution-steps">
                   {modalInference.similarityRationale.map((reason, index) => (
@@ -703,16 +650,6 @@ export default function ContextGuardianDashboard() {
                   ))}
                 </ol>
               ) : null}
-
-              <div className="node-chain" aria-hidden>
-                <span>Ticket</span>
-                <i />
-                <span>Slack</span>
-                <i />
-                <span>OPS-8492</span>
-                <i />
-                <span>Post-Mortem</span>
-              </div>
             </section>
 
             {modalCanRenderSolution && modalTicket && (

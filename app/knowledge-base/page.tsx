@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AutoFocusTarget from "@/components/knowledge-base/auto-focus-target";
 import {
   type JiraArtifact,
   type KnowledgeArtifact,
@@ -181,11 +182,24 @@ function renderArtifact(
 
 export default function KnowledgeBasePage({ searchParams }: KnowledgeBasePageProps) {
   const artifacts = listKnowledgeArtifacts();
+  const slackArtifacts = artifacts.filter(
+    (artifact): artifact is SlackConversationArtifact => artifact.type === "slack",
+  );
+  const infraArtifacts = artifacts.filter(
+    (artifact): artifact is JiraArtifact => artifact.type === "jira",
+  );
+  const postMortemArtifacts = artifacts.filter(
+    (artifact): artifact is PostMortemArtifact => artifact.type === "postmortem",
+  );
   const selectedArtifactId = searchParams?.artifact;
   const highlightedMessageId = searchParams?.message;
   const highlightedEntry = searchParams?.entry;
   const selectedArtifact =
-    artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? artifacts[0] ?? null;
+    artifacts.find((artifact) => artifact.id === selectedArtifactId) ??
+    slackArtifacts[0] ??
+    infraArtifacts[0] ??
+    postMortemArtifacts[0] ??
+    null;
 
   if (!selectedArtifact) {
     return null;
@@ -193,26 +207,59 @@ export default function KnowledgeBasePage({ searchParams }: KnowledgeBasePagePro
 
   return (
     <main className="kb-page">
+      <AutoFocusTarget targetId={highlightedMessageId || highlightedEntry || selectedArtifactId} />
       <header className="kb-topbar">
         <Link href="/" className="kb-back-main">
           Back To Dashboard
         </Link>
-
-        <div className="kb-source-tabs">
-          {artifacts.map((artifact) => (
-            <Link
-              key={artifact.id}
-              href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
-              className={`kb-source-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
-            >
-              {artifact.type === "jira" ? artifact.ticketKey : artifact.type}
-            </Link>
-          ))}
-        </div>
       </header>
 
-      <section className="kb-main-single">
-        <article id={selectedArtifact.id} className="kb-article kb-highlight-target">
+      <section className="kb-layout">
+        <aside className="kb-sidebar">
+          <section className="kb-group">
+            <p className="kb-group-title">Slack Conversations</p>
+            {slackArtifacts.map((artifact) => (
+              <Link
+                key={artifact.id}
+                href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
+                className={`kb-artifact-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
+              >
+                <span className="kb-mini-badge">SLK</span>
+                <span>#{artifact.channel}</span>
+              </Link>
+            ))}
+          </section>
+
+          <section className="kb-group">
+            <p className="kb-group-title">Infra Tickets</p>
+            {infraArtifacts.map((artifact) => (
+              <Link
+                key={artifact.id}
+                href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
+                className={`kb-artifact-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
+              >
+                <span className="kb-mini-badge">INF</span>
+                <span>{artifact.ticketKey}</span>
+              </Link>
+            ))}
+          </section>
+
+          <section className="kb-group">
+            <p className="kb-group-title">Post-Mortems</p>
+            {postMortemArtifacts.map((artifact) => (
+              <Link
+                key={artifact.id}
+                href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
+                className={`kb-artifact-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
+              >
+                <span className="kb-mini-badge">PM</span>
+                <span>{artifact.title}</span>
+              </Link>
+            ))}
+          </section>
+        </aside>
+
+        <article id={selectedArtifact.id} className="kb-main-single kb-article kb-highlight-target">
           {renderArtifact(selectedArtifact, highlightedMessageId, highlightedEntry)}
         </article>
       </section>

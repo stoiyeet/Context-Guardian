@@ -328,6 +328,75 @@ pre {
   line-height: 1.35;
 }
 
+.evidence-graph-hint {
+  margin: 8px 0 0;
+  color: #a7b0bb;
+  font-size: 12px;
+}
+
+.evidence-graph-wrap {
+  margin-top: 10px;
+  border: 1px solid #3a4450;
+  background: #0f141a;
+}
+
+.evidence-graph-wrap .react-flow__attribution {
+  display: none;
+}
+
+.evidence-graph-wrap .react-flow__node {
+  cursor: pointer;
+}
+
+.evidence-graph-wrap .react-flow__edge-path {
+  stroke: #5d6776;
+}
+
+.evidence-graph-wrap .react-flow__edge-textbg {
+  fill: #0f141a;
+}
+
+.evidence-graph-wrap .react-flow__edge-text {
+  fill: #b9c2ce;
+  font-size: 10px;
+}
+
+.evidence-node-card {
+  border: 1px solid #404b58;
+  background: #151b22;
+  color: #e8eaed;
+  min-width: 180px;
+  max-width: 240px;
+  padding: 7px;
+}
+
+.evidence-node-card p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: #dde3ea;
+}
+
+.evidence-node-card span {
+  display: block;
+  margin-top: 6px;
+  color: #9fa9b6;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.evidence-node-badge {
+  border: 1px solid #5a6677;
+  background: #1a222d;
+  color: #f0a500;
+  font-size: 10px;
+  padding: 1px 4px;
+  letter-spacing: 0.04em;
+}
+
 .evidence-sentence {
   margin: 8px 0 0;
   font-size: 14px;
@@ -575,6 +644,68 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.kb-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.kb-sidebar {
+  border: 1px solid var(--kb-border);
+  background: #171b23;
+  padding: 10px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kb-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-group-title {
+  margin: 0;
+  color: #a8b2c2;
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kb-artifact-link {
+  text-decoration: none;
+  color: #d8dee8;
+  border: 1px solid #3f4857;
+  background: #121822;
+  font-size: 12px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kb-artifact-link:hover,
+.kb-artifact-link.active {
+  border-color: var(--amber);
+  background: #161f2a;
+}
+
+.kb-mini-badge {
+  border: 1px solid #556176;
+  background: #1d2632;
+  color: #f0a500;
+  font-family: var(--font-data);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  letter-spacing: 0.05em;
 }
 
 .kb-topbar {
@@ -1103,6 +1234,10 @@ pre {
 
 @media (max-width: 1180px) {
   .context-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .kb-layout {
     grid-template-columns: 1fr;
   }
 
