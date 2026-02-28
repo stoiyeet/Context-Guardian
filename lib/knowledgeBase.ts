@@ -3355,6 +3355,149 @@ const jiraArtifacts: JiraArtifact[] = [
   },
 ];
 
+const JIRA_OWNER_OVERRIDES: Record<string, string> = {
+  "COMP-299": "Aisha Rahman",
+  "COMP-344": "Aisha Rahman",
+  "COMP-255": "Aisha Rahman",
+  "COMP-331": "Aisha Rahman",
+  "INFRA-511": "Mateo Ruiz",
+  "INFRA-437": "Chloe Park",
+  "INFRA-566": "Chloe Park",
+  "INFRA-588": "Mateo Ruiz",
+  "INFRA-392": "Liam O'Connell",
+  "LED-188": "Nina Patel",
+  "LED-241": "Nina Patel",
+  "OPS-620": "Liam O'Connell",
+  "OPS-673": "Liam O'Connell",
+  "OPS-911": "Priya Nair",
+  "OPS-940": "Liam O'Connell",
+};
+
+const JIRA_COMMENT_REMAP_BY_PREFIX: Record<string, Record<string, string>> = {
+  COMP: {
+    "Sarah Jenkins": "Priya Nair",
+    "Marcus T.": "Aisha Rahman",
+    "Marcus Thibodeau": "Aisha Rahman",
+    "Dan Smith": "Chloe Park",
+    "Raj Khoury": "Liam O'Connell",
+  },
+  INFRA: {
+    "Sarah Jenkins": "Liam O'Connell",
+    "Dan Smith": "Chloe Park",
+    "Raj Khoury": "Mateo Ruiz",
+    "Marcus T.": "Aisha Rahman",
+    "Marcus Thibodeau": "Aisha Rahman",
+  },
+  LED: {
+    "Sarah Jenkins": "Nina Patel",
+    "Dan Smith": "Chloe Park",
+    "Raj Khoury": "Liam O'Connell",
+    "Marcus T.": "Aisha Rahman",
+    "Marcus Thibodeau": "Aisha Rahman",
+  },
+};
+
+const JIRA_COMMENT_REMAP_BY_KEY: Record<string, Record<string, string>> = {
+  "OPS-620": {
+    "Sarah Jenkins": "Liam O'Connell",
+    "Marcus T.": "Aisha Rahman",
+    "Marcus Thibodeau": "Aisha Rahman",
+    "Dan Smith": "Chloe Park",
+  },
+  "OPS-673": {
+    "Sarah Jenkins": "Liam O'Connell",
+    "Marcus T.": "Aisha Rahman",
+    "Marcus Thibodeau": "Aisha Rahman",
+    "Raj Khoury": "Priya Nair",
+  },
+  "OPS-911": {
+    "Sarah Jenkins": "Priya Nair",
+    "Marcus T.": "Aisha Rahman",
+    "Marcus Thibodeau": "Aisha Rahman",
+  },
+  "OPS-940": {
+    "Sarah Jenkins": "Liam O'Connell",
+    "Marcus T.": "Aisha Rahman",
+    "Marcus Thibodeau": "Aisha Rahman",
+    "Raj Khoury": "Mateo Ruiz",
+  },
+  "DOC-114": {
+    "Sarah Jenkins": "Liam O'Connell",
+  },
+};
+
+const JIRA_SLACK_XREF_NOTES: Record<
+  string,
+  {
+    author: string;
+    timestamp: string;
+    body: string;
+  }
+> = {
+  "INFRA-566": {
+    author: "Aisha Rahman",
+    timestamp: "2024-12-10T09:22:00-05:00",
+    body: "Cross-reference: Slack #compliance-reviews Dec 2024 captured the FHSA/TFSA misclassification risk and aligned the final control language before rollout.",
+  },
+  "INFRA-588": {
+    author: "Nina Patel",
+    timestamp: "2025-02-27T09:18:00-05:00",
+    body: "Cross-reference: Slack #compliance-reviews Feb 2025 over-contribution hold cases showed how retry duplication amplified compliance queue load.",
+  },
+  "INFRA-511": {
+    author: "Aisha Rahman",
+    timestamp: "2025-03-05T10:31:00-05:00",
+    body: "Cross-reference: Slack #compliance-reviews May 2025 ownership-loop thread helped frame queue-wide incident handling so Reg-flagged transfers kept correct ownership.",
+  },
+  "COMP-299": {
+    author: "Aisha Rahman",
+    timestamp: "2025-01-21T10:12:00-05:00",
+    body: "See Slack #compliance-reviews Jan 2025 for the finalized sequence: hold at pre-close, file CRA packet, then release on explicit compliance completion note.",
+  },
+};
+
+for (const ticket of jiraArtifacts) {
+  const ownerOverride = JIRA_OWNER_OVERRIDES[ticket.ticketKey];
+  if (ownerOverride) {
+    ticket.owner = ownerOverride;
+  }
+
+  const prefix = ticket.ticketKey.split("-")[0] ?? "";
+  const remap = {
+    ...(JIRA_COMMENT_REMAP_BY_PREFIX[prefix] ?? {}),
+    ...(JIRA_COMMENT_REMAP_BY_KEY[ticket.ticketKey] ?? {}),
+  };
+
+  ticket.comments = ticket.comments.map((comment) => {
+    const replacement = remap[comment.author];
+    if (!replacement) {
+      return comment;
+    }
+
+    return {
+      ...comment,
+      author: replacement,
+      role: PERSON_ROLE[replacement] ?? comment.role,
+    };
+  });
+
+  const xref = JIRA_SLACK_XREF_NOTES[ticket.ticketKey];
+  if (xref) {
+    const xrefId = `${ticket.id}-xref`;
+    if (!ticket.comments.some((comment) => comment.id === xrefId)) {
+      ticket.comments.push(
+        jc(
+          xrefId,
+          xref.author,
+          PERSON_ROLE[xref.author] ?? "Analyst",
+          xref.timestamp,
+          xref.body,
+        ),
+      );
+    }
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Post-Mortems
 // -----------------------------------------------------------------------------
