@@ -830,19 +830,53 @@ function buildPriorResolutionTeam(
     ...preferredIds,
     ...Array.from(citationByPerson.keys()).filter((personId) => !preferredIds.includes(personId)),
   ];
-
-  return orderedIds
+  const preferredOrder = new Map(preferredIds.map((id, index) => [id, index]));
+  const candidates = orderedIds
     .map((personId) => synth.smeRoutingTable.find((entry) => entry.personId === personId))
     .filter((entry): entry is SynthesizedKnowledgeState["smeRoutingTable"][number] => Boolean(entry))
-    .filter((entry) => (citationByPerson.get(entry.personId) ?? []).length > 0)
-    .slice(0, 4)
     .map((entry) => ({
-      id: entry.personId,
-      name: entry.name,
-      role: entry.role,
-      status: entry.status,
-      citationArtifactIds: citationByPerson.get(entry.personId) ?? [],
-    }));
+      entry,
+      citations: citationByPerson.get(entry.personId) ?? [],
+    }))
+    .filter((item) => item.citations.length > 0);
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const maxCitationCount = Math.max(...candidates.map((item) => item.citations.length), 1);
+  const ranked = candidates
+    .map((item) => {
+      const preferredRank = preferredOrder.get(item.entry.personId);
+      const preferredBoost = preferredRank === undefined ? 0 : Math.max(0, 0.18 - preferredRank * 0.04);
+      const activeBoost = item.entry.status === "Active" ? 0.06 : -0.08;
+      const leadershipPenalty =
+        item.entry.role.includes("Manager") || item.entry.role.includes("Head") ? 0.08 : 0;
+      const citationScore = item.citations.length / maxCitationCount;
+      const score = citationScore + preferredBoost + activeBoost - leadershipPenalty;
+
+      return {
+        ...item,
+        score,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const maxScore = ranked[0]?.score ?? 0;
+  const nearTopCount = ranked.filter((item) => maxScore - item.score <= 0.1).length;
+  let requestedSize = maxScore < 0.45 ? 1 : Math.min(4, nearTopCount);
+  if (requestedSize === 1 && ranked.length > 1 && maxScore - ranked[1].score < 0.18) {
+    requestedSize = 2;
+  }
+  const teamSize = Math.max(1, Math.min(4, requestedSize, ranked.length));
+
+  return ranked.slice(0, teamSize).map((item) => ({
+    id: item.entry.personId,
+    name: item.entry.name,
+    role: item.entry.role,
+    status: item.entry.status,
+    citationArtifactIds: item.citations,
+  }));
 }
 
 function confidenceCaveat(

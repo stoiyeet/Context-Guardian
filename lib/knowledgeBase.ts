@@ -105,6 +105,11 @@ const PERSON_ROLE: Record<string, string> = {
   "Raj Khoury": "Engineering Manager",
   "Elena Vasquez": "Head of Compliance",
   "Dev Chatterjee": "Platform Engineer",
+  "Liam O'Connell": "Transfer Operations Specialist",
+  "Chloe Park": "Staff Software Engineer",
+  "Nina Patel": "Reconciliation Analyst",
+  "Mateo Ruiz": "Site Reliability Engineer",
+  "Aisha Rahman": "Regulatory Counsel",
 };
 
 const THREAD_HOOKS: Record<string, string[]> = {
@@ -326,6 +331,56 @@ function tonePrefix(speaker: string, hour: number, seed: number): string {
   if (speaker === "Raj Khoury") {
     const manager = ["Escalation view:", "Leadership checkpoint:", "Visibility note:"];
     return choose(manager, seed);
+  }
+  if (speaker === "Liam O'Connell") {
+    return choose(
+      [
+        "Transfer ops note:",
+        "Checked queue dispatch details:",
+        "Ops handling update:",
+      ],
+      seed,
+    );
+  }
+  if (speaker === "Chloe Park") {
+    return choose(
+      [
+        "Bridge/CAS implementation note:",
+        "Parser behavior update:",
+        "Infra codepath check:",
+      ],
+      seed,
+    );
+  }
+  if (speaker === "Nina Patel") {
+    return choose(
+      [
+        "Reconciliation view:",
+        "Ledger tie-out note:",
+        "Audit-side observation:",
+      ],
+      seed,
+    );
+  }
+  if (speaker === "Mateo Ruiz") {
+    return choose(
+      [
+        "SRE signal:",
+        "Runtime reliability note:",
+        "Latency and retry update:",
+      ],
+      seed,
+    );
+  }
+  if (speaker === "Aisha Rahman") {
+    return choose(
+      [
+        "Regulatory interpretation:",
+        "Counsel perspective:",
+        "Policy scope note:",
+      ],
+      seed,
+    );
   }
   return choose(
     [
@@ -2294,9 +2349,22 @@ const CHANNEL_ARCHIVE_COUNTS: Record<SlackConversationArtifact["channel"], numbe
   "incident-postmortems": 160,
 };
 
+const CHANNEL_SPECIALISTS: Record<SlackConversationArtifact["channel"], string[]> = {
+  "ops-transfers-incidents": ["Liam O'Connell", "Nina Patel"],
+  "eng-transfer-infra": ["Chloe Park", "Mateo Ruiz"],
+  "compliance-reviews": ["Aisha Rahman", "Nina Patel"],
+  "ops-general": ["Liam O'Connell", "Aisha Rahman"],
+  "incident-postmortems": ["Chloe Park", "Nina Patel"],
+};
+
 for (const thread of slackArtifacts) {
   const participants = Array.from(
-    new Set(thread.messages.map((message) => message.sender).filter((sender) => sender !== "Elena Vasquez")),
+    new Set(
+      [
+        ...thread.messages.map((message) => message.sender).filter((sender) => sender !== "Elena Vasquez"),
+        ...(CHANNEL_SPECIALISTS[thread.channel] ?? []),
+      ],
+    ),
   );
   const roleBySender = thread.messages.reduce<Record<string, string>>((acc, message) => {
     acc[message.sender] = message.role;

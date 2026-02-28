@@ -91,6 +91,7 @@ type QueryContext = {
 const SYNTH_DIR = path.join(process.cwd(), "data");
 const SYNTH_FILE = path.join(SYNTH_DIR, "synthesizedKnowledge.json");
 const SYNTHESIS_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o";
+const SYNTH_STATE_VERSION = 2;
 
 const DOMAIN_KEYWORDS: Record<string, string[]> = {
   corporate_actions: ["cusip", "merger", "split", "delist", "corporate action", "drip"],
@@ -149,6 +150,36 @@ const CAST: Array<{
     personId: "dev-chatterjee",
     name: "Dev Chatterjee",
     role: "Platform Engineer",
+    status: "Active",
+  },
+  {
+    personId: "liam-oconnell",
+    name: "Liam O'Connell",
+    role: "Transfer Operations Specialist",
+    status: "Active",
+  },
+  {
+    personId: "chloe-park",
+    name: "Chloe Park",
+    role: "Staff Software Engineer",
+    status: "Active",
+  },
+  {
+    personId: "nina-patel",
+    name: "Nina Patel",
+    role: "Reconciliation Analyst",
+    status: "Active",
+  },
+  {
+    personId: "mateo-ruiz",
+    name: "Mateo Ruiz",
+    role: "Site Reliability Engineer",
+    status: "Active",
+  },
+  {
+    personId: "aisha-rahman",
+    name: "Aisha Rahman",
+    role: "Regulatory Counsel",
     status: "Active",
   },
 ];
@@ -649,7 +680,7 @@ export async function buildSynthesizedKnowledge(): Promise<SynthesizedKnowledgeS
   const artifacts = listKnowledgeArtifacts();
   const now = new Date().toISOString();
   const baseNoRecency: Omit<SynthesizedKnowledgeState, "recencyIndex"> = {
-    version: 1,
+    version: SYNTH_STATE_VERSION,
     builtAt: now,
     lastUpdatedAt: now,
     sourceArtifactCount: artifacts.length,
@@ -671,7 +702,7 @@ export async function buildSynthesizedKnowledge(): Promise<SynthesizedKnowledgeS
 }
 
 export async function loadSynthesizedKnowledge(): Promise<SynthesizedKnowledgeState> {
-  if (cachedState) {
+  if (cachedState && cachedState.version === SYNTH_STATE_VERSION) {
     return cachedState;
   }
   if (loadingPromise) {
@@ -682,6 +713,9 @@ export async function loadSynthesizedKnowledge(): Promise<SynthesizedKnowledgeSt
     try {
       const raw = await fs.readFile(SYNTH_FILE, "utf8");
       const parsed = JSON.parse(raw) as SynthesizedKnowledgeState;
+      if (parsed.version !== SYNTH_STATE_VERSION) {
+        return buildSynthesizedKnowledge();
+      }
       cachedState = parsed;
       return parsed;
     } catch {
