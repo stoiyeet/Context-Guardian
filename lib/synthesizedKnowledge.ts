@@ -102,6 +102,70 @@ const DOMAIN_KEYWORDS: Record<string, string[]> = {
   ops_process: ["runbook", "documentation", "fhsa", "tfsa", "rrsp", "queue"],
 };
 
+const SME_SPECIALIZATION_BOOSTS: Record<
+  string,
+  {
+    systems?: string[];
+    domains?: string[];
+    tokens?: string[];
+    bonus: number;
+  }
+> = {
+  "chloe-park": {
+    systems: ["bridge", "CAS", "validator"],
+    domains: ["custodian_bridge", "validator_reliability"],
+    tokens: ["parser", "schema", "normalization", "bridge transform"],
+    bonus: 0.22,
+  },
+  "mateo-ruiz": {
+    systems: ["CAS", "queue"],
+    domains: ["custodian_bridge"],
+    tokens: ["503", "timeout", "latency", "retry", "backlog"],
+    bonus: 0.22,
+  },
+  "nina-patel": {
+    systems: ["ledger"],
+    domains: ["ledger_reconciliation"],
+    tokens: ["recon", "audit", "rounding", "discrepancy", "tie-out"],
+    bonus: 0.21,
+  },
+  "aisha-rahman": {
+    systems: ["compliance"],
+    domains: ["compliance_regulatory"],
+    tokens: ["cra", "w-8ben", "iiroc", "reg flags", "regulatory"],
+    bonus: 0.22,
+  },
+  "liam-oconnell": {
+    systems: ["ATON", "queue"],
+    domains: ["ops_process"],
+    tokens: ["triage", "handoff", "manual review", "sla", "ops queue"],
+    bonus: 0.18,
+  },
+};
+
+function specialistBoost(
+  personId: string,
+  systems: string[],
+  domains: string[],
+  joined: string,
+): number {
+  const profile = SME_SPECIALIZATION_BOOSTS[personId];
+  if (!profile) {
+    return 0;
+  }
+  let score = 0;
+  if (profile.systems?.some((system) => systems.includes(system))) {
+    score += profile.bonus * 0.45;
+  }
+  if (profile.domains?.some((domain) => domains.includes(domain))) {
+    score += profile.bonus * 0.35;
+  }
+  if (profile.tokens?.some((token) => joined.toLowerCase().includes(token.toLowerCase()))) {
+    score += profile.bonus * 0.25;
+  }
+  return Math.min(profile.bonus, score);
+}
+
 const CAST: Array<{
   personId: string;
   name: string;
@@ -796,7 +860,38 @@ export async function querySynthesizedKnowledge(
         ? 0.15
         : 0;
       const departedPenalty = sme.status === "Departed" ? 0.25 : 0;
-      const score = Math.max(0, Number((0.55 * domainScore + 0.25 * recency + patternSystemBoost - departedPenalty).toFixed(4)));
+      const specialization = specialistBoost(sme.personId, systems, domains, joined);
+      const nonCompliancePenalty =
+        (sme.personId === "marcus-thibodeau" || sme.personId === "elena-vasquez") &&
+        !systems.includes("compliance") &&
+        !domains.includes("compliance_regulatory")
+          ? 0.08
+          : 0;
+      const managerPenalty =
+        sme.personId === "raj-khoury" &&
+        domains.length > 0 &&
+        !domains.includes("ops_process")
+          ? 0.07
+          : 0;
+      const broadOpsPenalty =
+        sme.personId === "sarah-jenkins" && domains.length > 0 && domains.every((domain) => domain !== "ops_process")
+          ? 0.04
+          : 0;
+      const score = Math.max(
+        0,
+        Number(
+          (
+            0.5 * domainScore +
+            0.22 * recency +
+            patternSystemBoost +
+            specialization -
+            departedPenalty -
+            nonCompliancePenalty -
+            managerPenalty -
+            broadOpsPenalty
+          ).toFixed(4),
+        ),
+      );
       return {
         personId: sme.personId,
         score,

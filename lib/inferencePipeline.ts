@@ -863,12 +863,16 @@ function buildPriorResolutionTeam(
     .sort((a, b) => b.score - a.score);
 
   const maxScore = ranked[0]?.score ?? 0;
-  const nearTopCount = ranked.filter((item) => maxScore - item.score <= 0.1).length;
-  let requestedSize = maxScore < 0.45 ? 1 : Math.min(4, nearTopCount);
-  if (requestedSize === 1 && ranked.length > 1 && maxScore - ranked[1].score < 0.18) {
-    requestedSize = 2;
+  let teamSize = Math.min(3, ranked.length);
+  if (maxScore < 0.42) {
+    teamSize = Math.min(2, ranked.length);
   }
-  const teamSize = Math.max(1, Math.min(4, requestedSize, ranked.length));
+  if (ranked.length >= 4 && maxScore > 0.78 && ranked[3].score >= maxScore - 0.06) {
+    teamSize = 4;
+  }
+  if (ranked.length === 1) {
+    teamSize = 1;
+  }
 
   return ranked.slice(0, teamSize).map((item) => ({
     id: item.entry.personId,
