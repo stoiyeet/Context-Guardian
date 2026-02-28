@@ -45,6 +45,7 @@ type SynthState = {
   builtAt: string;
   lastUpdatedAt: string;
   sourceArtifactCount: number;
+  learnedTicketIds?: string[];
   patterns: Pattern[];
   smeRoutingTable: Sme[];
   correlationMap: Correlation[];
@@ -151,6 +152,10 @@ export default function SynthesizedKnowledgePage() {
             <article>
               <span>Artifacts Analyzed</span>
               <strong>{state.sourceArtifactCount}</strong>
+            </article>
+            <article>
+              <span>Resolved Tickets Learned</span>
+              <strong>{state.learnedTicketIds?.length ?? 0}</strong>
             </article>
             <article>
               <span>Patterns / Correlations / SMEs</span>

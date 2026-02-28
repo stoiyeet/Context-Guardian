@@ -55,6 +55,7 @@ export type SynthesizedKnowledgeState = {
   builtAt: string;
   lastUpdatedAt: string;
   sourceArtifactCount: number;
+  learnedTicketIds: string[];
   patterns: PatternLibraryEntry[];
   smeRoutingTable: SmeRoutingEntry[];
   correlationMap: CorrelationMapEntry[];
@@ -748,6 +749,7 @@ export async function buildSynthesizedKnowledge(): Promise<SynthesizedKnowledgeS
     builtAt: now,
     lastUpdatedAt: now,
     sourceArtifactCount: artifacts.length,
+    learnedTicketIds: [],
     patterns: buildBasePatterns(artifacts),
     smeRoutingTable: buildSmeRoutingTable(artifacts),
     correlationMap: buildCorrelations(buildBasePatterns(artifacts)),
@@ -780,8 +782,14 @@ export async function loadSynthesizedKnowledge(): Promise<SynthesizedKnowledgeSt
       if (parsed.version !== SYNTH_STATE_VERSION) {
         return buildSynthesizedKnowledge();
       }
-      cachedState = parsed;
-      return parsed;
+      const normalized: SynthesizedKnowledgeState = {
+        ...parsed,
+        learnedTicketIds: Array.isArray(parsed.learnedTicketIds)
+          ? parsed.learnedTicketIds
+          : [],
+      };
+      cachedState = normalized;
+      return normalized;
     } catch {
       return buildSynthesizedKnowledge();
     } finally {
@@ -994,6 +1002,13 @@ export async function updateSynthesizedKnowledge(
   operatorNotes?: string,
 ): Promise<void> {
   const state = await loadSynthesizedKnowledge();
+  if (!Array.isArray(state.learnedTicketIds)) {
+    state.learnedTicketIds = [];
+  }
+  if (!state.learnedTicketIds.includes(resolvedTicket.id)) {
+    state.learnedTicketIds = [...state.learnedTicketIds, resolvedTicket.id].slice(-5000);
+    state.sourceArtifactCount += 1;
+  }
   const now = new Date().toISOString();
   const joined = [
     resolvedTicket.rawError,
@@ -1117,6 +1132,7 @@ export async function updateSynthesizedKnowledge(
     builtAt: state.builtAt,
     lastUpdatedAt: state.lastUpdatedAt,
     sourceArtifactCount: state.sourceArtifactCount,
+    learnedTicketIds: state.learnedTicketIds,
     patterns: state.patterns,
     smeRoutingTable: state.smeRoutingTable,
     correlationMap: state.correlationMap,
