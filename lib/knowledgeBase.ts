@@ -2341,6 +2341,32 @@ const slackArtifacts: SlackConversationArtifact[] = [
   },
 ];
 
+const COMPLIANCE_REVIEW_REASSIGNMENT: Record<string, string> = {
+  "Sarah Jenkins": "Priya Nair",
+  "Dan Smith": "Chloe Park",
+  "Raj Khoury": "Liam O'Connell",
+  "Marcus T.": "Aisha Rahman",
+  "Marcus Thibodeau": "Aisha Rahman",
+};
+
+for (const thread of slackArtifacts) {
+  if (thread.channel !== "compliance-reviews") {
+    continue;
+  }
+
+  thread.messages = thread.messages.map((message) => {
+    const replacement = COMPLIANCE_REVIEW_REASSIGNMENT[message.sender];
+    if (!replacement) {
+      return message;
+    }
+    return {
+      ...message,
+      sender: replacement,
+      role: PERSON_ROLE[replacement] ?? message.role,
+    };
+  });
+}
+
 const CHANNEL_ARCHIVE_COUNTS: Record<SlackConversationArtifact["channel"], number> = {
   "ops-transfers-incidents": 240,
   "eng-transfer-infra": 220,
