@@ -1255,6 +1255,126 @@ pre {
   animation: slideInTop 320ms ease-out;
 }
 
+/* Layout (optional but helps prevent weird squeezing) */
+.messages-shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 12px;
+  height: calc(100vh - 48px);
+}
+
+.messages-list {
+  overflow: auto;
+}
+
+.messages-thread {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* CRITICAL: allows children to shrink/wrap instead of overflow */
+}
+
+.messages-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  min-width: 0;
+  /* also critical */
+}
+
+/* Thread list minor polish */
+.message-thread-card {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.message-thread-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.message-thread-card.active {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Bubble rows */
+.message-bubble-row {
+  display: flex;
+  margin: 8px 0;
+  min-width: 0;
+  /* critical */
+}
+
+.message-bubble-row.mine {
+  justify-content: flex-end;
+}
+
+.message-bubble-row.theirs {
+  justify-content: flex-start;
+}
+
+/* Bubble: prevent crossing x-boundary */
+.message-bubble {
+  max-width: min(680px, 78%);
+  /* never exceed container width */
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  /* prevents visual spill */
+}
+
+/* Differentiate mine/theirs (optional) */
+.message-bubble-row.mine .message-bubble {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Text wrapping rules (this fixes overlap) */
+.message-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  /* preserves newlines while wrapping */
+  overflow-wrap: anywhere;
+  /* breaks long tokens (URLs) */
+  word-break: break-word;
+  /* older fallback */
+  line-height: 1.35;
+}
+
+/* Metadata line */
+.message-bubble span {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+/* Header polish */
+.messages-thread-header {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 0;
+  background: inherit;
+  /* or set a solid bg if you see transparency artifacts */
+  z-index: 1;
+}
+
+/* Nice scroll (optional) */
+.messages-scroll {
+  scroll-behavior: smooth;
+}
+
 @keyframes pulse {
   0%,
   100% {
