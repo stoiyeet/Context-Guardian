@@ -74,10 +74,10 @@ function activeContributors(ticket: OpsTicket): string[] {
 }
 
 function composeGreetingFromRecipients(recipients: MessageRecipient[]): string {
-  if (recipients.length >= 3) {
+  if (recipients.length === 0) {
     return "Hi team,";
   }
-  return `Hi ${recipients.map((recipient) => recipient.name.split(" ")[0]).join(" and ")},`;
+  return `Hi ${recipients.map((recipient) => recipient.name).join(", ")},`;
 }
 
 function withProgrammaticGreeting(
@@ -228,6 +228,7 @@ export default function ContextGuardianDashboard() {
   }, []);
 
   const authorize = useCallback(async (ticketId: string) => {
+    const snapshot = tickets.find((ticket) => ticket.id === ticketId) ?? null;
     setTicketUi((previous) => {
       const current = previous[ticketId];
       if (!current) {
@@ -256,12 +257,13 @@ export default function ContextGuardianDashboard() {
         },
         body: JSON.stringify({
           operatorNotes: "Authorized from dashboard.",
+          ticketSnapshot: snapshot,
         }),
       });
     } catch {
       // Keep optimistic UI state if authorization endpoint fails.
     }
-  }, []);
+  }, [tickets]);
 
   const copyPayload = useCallback(async (payload: string) => {
     await navigator.clipboard.writeText(payload);

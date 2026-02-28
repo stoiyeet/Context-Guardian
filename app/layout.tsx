@@ -22,6 +22,7 @@ export default function RootLayout({
             <Link href="/">Dashboard</Link>
             <Link href="/messages">Messages</Link>
             <Link href="/knowledge-base">Knowledge Base</Link>
+            <Link href="/synthesized-knowledge">Synthesized Layer</Link>
           </nav>
         </header>
         <div className="app-content">{children}</div>

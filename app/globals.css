@@ -1251,128 +1251,152 @@ pre {
   font-size: 11px;
 }
 
-.slide-in-top {
-  animation: slideInTop 320ms ease-out;
-}
-
-/* Layout (optional but helps prevent weird squeezing) */
-.messages-shell {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 12px;
-  height: calc(100vh - 48px);
-}
-
-.messages-list {
-  overflow: auto;
-}
-
-.messages-thread {
+.synth-shell {
+  min-height: calc(100vh - 52px);
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  /* CRITICAL: allows children to shrink/wrap instead of overflow */
+  gap: 12px;
 }
 
-.messages-scroll {
-  flex: 1;
-  overflow: auto;
+.synth-header {
+  border: 1px solid #2f3741;
+  background: #12161b;
   padding: 12px;
-  min-width: 0;
-  /* also critical */
-}
-
-/* Thread list minor polish */
-.message-thread-card {
-  width: 100%;
-  text-align: left;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: transparent;
-  cursor: pointer;
-  display: grid;
-  gap: 4px;
-}
-
-.message-thread-card:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.message-thread-card.active {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.14);
-}
-
-/* Bubble rows */
-.message-bubble-row {
   display: flex;
-  margin: 8px 0;
-  min-width: 0;
-  /* critical */
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.message-bubble-row.mine {
-  justify-content: flex-end;
+.synth-header h1 {
+  margin: 6px 0 0;
+  font-size: 20px;
 }
 
-.message-bubble-row.theirs {
-  justify-content: flex-start;
-}
-
-/* Bubble: prevent crossing x-boundary */
-.message-bubble {
-  max-width: min(680px, 78%);
-  /* never exceed container width */
-  min-width: 0;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.05);
-  overflow: hidden;
-  /* prevents visual spill */
-}
-
-/* Differentiate mine/theirs (optional) */
-.message-bubble-row.mine .message-bubble {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
-}
-
-/* Text wrapping rules (this fixes overlap) */
-.message-bubble p {
-  margin: 0;
-  white-space: pre-wrap;
-  /* preserves newlines while wrapping */
-  overflow-wrap: anywhere;
-  /* breaks long tokens (URLs) */
-  word-break: break-word;
-  /* older fallback */
-  line-height: 1.35;
-}
-
-/* Metadata line */
-.message-bubble span {
-  display: block;
-  margin-top: 6px;
+.synth-header p {
+  margin: 6px 0 0;
+  color: #97a2b1;
   font-size: 12px;
-  opacity: 0.75;
+  line-height: 1.4;
 }
 
-/* Header polish */
-.messages-thread-header {
+.synth-header button {
+  border: 1px solid #3f4a57;
+  background: #1a2129;
+  color: #d7dde6;
+  font-size: 11px;
+  padding: 6px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.synth-eyebrow {
+  margin: 0;
+  color: #f0a500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-family: var(--font-data);
+}
+
+.synth-note {
+  margin: 0;
+  border: 1px solid #303944;
+  background: #12171d;
+  color: #a9b3c0;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.synth-error {
+  border-color: #67444a;
+  color: #efb4bc;
+  background: #24171a;
+}
+
+.synth-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.synth-metrics article {
+  border: 1px solid #2f3843;
+  background: #11161b;
+  padding: 10px;
+}
+
+.synth-metrics span {
+  display: block;
+  color: #95a0b0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.synth-metrics strong {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-data);
+  font-size: 13px;
+  color: #e6eaf1;
+}
+
+.synth-section {
+  border: 1px solid #2f3843;
+  background: #11161b;
   padding: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  position: sticky;
-  top: 0;
-  background: inherit;
-  /* or set a solid bg if you see transparency artifacts */
-  z-index: 1;
 }
 
-/* Nice scroll (optional) */
-.messages-scroll {
-  scroll-behavior: smooth;
+.synth-section h2 {
+  margin: 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #f0a500;
+}
+
+.synth-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.synth-list article {
+  border: 1px solid #323b47;
+  background: #131920;
+  padding: 10px;
+}
+
+.synth-list article p {
+  margin: 0 0 6px;
+  line-height: 1.45;
+  font-size: 12px;
+  color: #d8dde5;
+}
+
+.synth-list article p:last-child {
+  margin-bottom: 0;
+}
+
+.synth-list article strong {
+  font-size: 13px;
+  color: #ecf0f5;
+}
+
+.synth-list article span {
+  display: block;
+  margin-top: 2px;
+  color: #97a2b2;
+  font-size: 11px;
+  font-family: var(--font-data);
+}
+
+.slide-in-top {
+  animation: slideInTop 320ms ease-out;
 }
 
 @keyframes pulse {

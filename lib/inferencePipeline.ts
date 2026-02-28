@@ -682,6 +682,111 @@ function buildFallbackSteps(input: InferencePipelineInput, unknownPattern: boole
   ];
 }
 
+function canonicalStepKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isGenericResolutionText(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("review inferred remediation path") ||
+    lower.includes("review inferred") ||
+    lower === "step" ||
+    lower === "review remediation path"
+  );
+}
+
+function sanitizeResolutionSteps(
+  input: InferencePipelineInput,
+  unknownPattern: boolean,
+  candidates: ResolutionStep[],
+): ResolutionStep[] {
+  const fallback = buildFallbackSteps(input, unknownPattern);
+  const unique = new Set<string>();
+  const cleaned: ResolutionStep[] = [];
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    const fallbackStep = fallback[index % fallback.length];
+    const detailsBase = (candidate.details || "").trim();
+    const titleBase = (candidate.title || "").trim();
+    const details = !detailsBase || isGenericResolutionText(detailsBase)
+      ? fallbackStep.details
+      : detailsBase;
+    const title = !titleBase || /^step\s*\d+$/i.test(titleBase)
+      ? fallbackStep.title
+      : titleBase;
+    const key = canonicalStepKey(details);
+    if (!key || unique.has(key)) {
+      continue;
+    }
+    unique.add(key);
+    cleaned.push({
+      ...candidate,
+      title,
+      details,
+      status: "Pending",
+      reviewed: false,
+    });
+  }
+
+  const minCount = unknownPattern ? 4 : 3;
+  for (const fallbackStep of fallback) {
+    if (cleaned.length >= minCount) {
+      break;
+    }
+    const key = canonicalStepKey(fallbackStep.details);
+    if (unique.has(key)) {
+      continue;
+    }
+    unique.add(key);
+    cleaned.push({
+      ...fallbackStep,
+      status: "Pending",
+      reviewed: false,
+    });
+  }
+
+  const payloadIndices = cleaned
+    .map((step, index) => (step.payloadJson ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (payloadIndices.length === 0) {
+    const payloadFallback = fallback.find((step) => Boolean(step.payloadJson));
+    if (payloadFallback) {
+      const insertAt = Math.min(1, cleaned.length);
+      cleaned.splice(insertAt, 0, {
+        ...payloadFallback,
+        status: "Pending",
+        reviewed: false,
+      });
+    }
+  } else if (payloadIndices.length > 1) {
+    const keepIndex = payloadIndices[0];
+    for (const payloadIndex of payloadIndices.slice(1)) {
+      cleaned[payloadIndex] = {
+        ...cleaned[payloadIndex],
+        payloadJson: undefined,
+      };
+    }
+    cleaned[keepIndex] = {
+      ...cleaned[keepIndex],
+      status: "Pending",
+      reviewed: false,
+    };
+  }
+
+  return cleaned.slice(0, 6).map((step, index) => ({
+    ...step,
+    id: `step-${index + 1}`,
+    status: "Pending",
+    reviewed: false,
+  }));
+}
+
 function mapArtifactToNodeSource(
   artifact: KnowledgeArtifact,
 ): "jira" | "slack" | "confluence" | "regulatory" | "ticket" {
@@ -1073,14 +1178,11 @@ function toBlueprintFromSynthesis(
         )
       : undefined,
   }));
-
-  const resolutionSteps = llmSteps && llmSteps.length > 0 ? llmSteps : fallbackSteps;
-  if (!resolutionSteps.some((step) => Boolean(step.payloadJson))) {
-    const injection = buildFallbackSteps(input, unknownPattern).find((step) => Boolean(step.payloadJson));
-    if (injection) {
-      resolutionSteps.splice(Math.min(1, resolutionSteps.length), 0, injection);
-    }
-  }
+  const resolutionSteps = sanitizeResolutionSteps(
+    input,
+    unknownPattern,
+    llmSteps && llmSteps.length > 0 ? llmSteps : fallbackSteps,
+  );
 
   const resolutionEvidenceHits = citations.filter((citation) => citation.connectionType === "same resolution path").length;
   const resolutionPathConfidence = clamp01(Math.min(1, 0.35 + resolutionEvidenceHits * 0.2));
