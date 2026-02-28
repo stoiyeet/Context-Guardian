@@ -554,7 +554,6 @@ function buildFallbackDraftMessage(
   team: SMEReference[],
   solutionSummary?: string | null,
 ): string {
-  const recipients = team.map((member) => member.name).join(", ") || "ops and infra reviewers";
   const formatArtifactRef = (artifactId: string): string => {
     const artifact = listKnowledgeArtifacts().find((entry) => entry.id === artifactId);
     if (!artifact) {
@@ -579,9 +578,9 @@ function buildFallbackDraftMessage(
     .map((member) => {
       const refs = member.citationArtifactIds.slice(0, 2).map(formatArtifactRef);
       if (refs.length === 0) {
-        return `${member.name} helped on earlier transfer incidents`;
+        return "the recipient group helped on earlier transfer incidents";
       }
-      return `${member.name} worked on ${refs.join(" and ")}`;
+      return `the recipient group worked on ${refs.join(" and ")}`;
     })
     .join("; ");
   const resolutionContext = solutionSummary
@@ -590,7 +589,7 @@ function buildFallbackDraftMessage(
   const involvementLine = priorInvolvement
     ? `I am reaching out because ${priorInvolvement}.`
     : "";
-  return `Hi ${recipients}, ticket ${input.ticketId} failed at ${input.context.pipelineStage} while ${input.context.attemptedAction}, after last successful state ${input.context.lastSuccessfulState}. Context Guardian diagnosed a likely normalization issue in the bridge/validator path. ${involvementLine} ${resolutionContext}Could you review the normalization logic and confirm whether we should authorize the current remediation path today?`;
+  return `Hi team, ticket ${input.ticketId} failed at ${input.context.pipelineStage} while ${input.context.attemptedAction}, after last successful state ${input.context.lastSuccessfulState}. Context Guardian diagnosed a likely normalization issue in the bridge/validator path. ${involvementLine} ${resolutionContext}Could you review the normalization logic and confirm whether we should authorize the current remediation path today?`;
 }
 
 function parseSeverity(input: string | undefined): OpsTicket["severity"] {
@@ -997,7 +996,7 @@ async function synthesizeWithLlm(
         {
           role: "system",
           content:
-            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, solutionSummary, priorResolutionTeamIds, draftMessage, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English with no jargon and no hedging. If this matches precedent, explain exactly why: include pipeline stage, attempted action, and last successful state alignment. For every diagnosis claim include explicit citation labels in parentheses. solutionSummary must be 3-5 sentences, past tense, and fully grounded; if any sentence cannot be grounded in retrieved artifacts, omit it. If grounding is insufficient return solutionSummary as null. priorResolutionTeamIds must only contain IDs from directTeamCandidates. draftMessage must read as a friendly request for help: include ticket ID, concise situation summary, what the system already diagnosed, recipient-specific ask to review normalization logic, and reference prior involvement naturally. If prior resolution context is available, mention what they did to solve it; if not, omit that part. End with a clear action request. Each resolution step is one sentence and exactly one step requiresPayload=true with valid JSON payload. If context is weak or precedent is weak, set unknownPattern=true and do not fabricate.",
+            "You generate fintech operations blueprints. Return strict JSON with keys: diagnosis, solutionSummary, priorResolutionTeamIds, draftMessage, resolutionSteps, unknownPattern, accountType, product, severity, routedSmeIds. Rules: diagnosis is one paragraph plain English with no jargon and no hedging. If this matches precedent, explain exactly why: include pipeline stage, attempted action, and last successful state alignment. For every diagnosis claim include explicit citation labels in parentheses. solutionSummary must be 3-5 sentences, past tense, and fully grounded; if any sentence cannot be grounded in retrieved artifacts, omit it. If grounding is insufficient return solutionSummary as null. priorResolutionTeamIds must only contain IDs from directTeamCandidates. draftMessage must read as a friendly request for help: include ticket ID, concise situation summary, what the system already diagnosed, recipient-specific ask to review normalization logic, and reference prior involvement naturally. If prior resolution context is available, mention what they did to solve it; if not, omit that part. End with a clear action request. Do not include any person names in draftMessage. Use a neutral greeting like 'Hi team,' only. Each resolution step is one sentence and exactly one step requiresPayload=true with valid JSON payload. If context is weak or precedent is weak, set unknownPattern=true and do not fabricate.",
         },
         {
           role: "user",

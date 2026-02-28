@@ -73,6 +73,24 @@ function activeContributors(ticket: OpsTicket): string[] {
     .map((sme) => `${sme.name} (${sme.role})`);
 }
 
+function composeGreetingFromRecipients(recipients: MessageRecipient[]): string {
+  if (recipients.length >= 3) {
+    return "Hi team,";
+  }
+  return `Hi ${recipients.map((recipient) => recipient.name.split(" ")[0]).join(" and ")},`;
+}
+
+function withProgrammaticGreeting(
+  draft: string,
+  recipients: MessageRecipient[],
+): string {
+  const greeting = composeGreetingFromRecipients(recipients);
+  const trimmed = draft.trim();
+  const withoutGreeting = trimmed.replace(/^(hi|hello)\s+[^\n,.!]*[,.!]\s*/i, "");
+  const body = withoutGreeting || trimmed || "Could you please review the normalization logic and advise.";
+  return `${greeting} ${body}`.trim();
+}
+
 export default function ContextGuardianDashboard() {
   const router = useRouter();
   const [tickets, setTickets] = useState<TicketSnapshot[]>([]);
@@ -265,7 +283,7 @@ export default function ContextGuardianDashboard() {
   const openComposeForRecipients = useCallback(
     (recipients: MessageRecipient[], draft: string) => {
       setComposeRecipients(recipients);
-      setComposeBody(draft);
+      setComposeBody(withProgrammaticGreeting(draft, recipients));
       setComposeOpen(true);
     },
     [],

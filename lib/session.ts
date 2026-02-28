@@ -5,11 +5,6 @@ const SESSION_COOKIE = "cg_session_id";
 
 export function getOrCreateSessionId(): string {
   const store = cookies();
-  const session_env = process.env.MONGODB_SESSION_ID
-  if (session_env)
-  {
-    return session_env
-  }
   const existing = store.get(SESSION_COOKIE)?.value;
   if (existing) {
     return existing;
