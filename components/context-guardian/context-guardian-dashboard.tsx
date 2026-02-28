@@ -86,6 +86,7 @@ export default function ContextGuardianDashboard() {
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [incomingIds, setIncomingIds] = useState<string[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [intakeModalTicketId, setIntakeModalTicketId] = useState<string | null>(null);
   const [modalTicketId, setModalTicketId] = useState<string | null>(null);
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [composeOpen, setComposeOpen] = useState(false);
@@ -151,11 +152,16 @@ export default function ContextGuardianDashboard() {
     () => tickets.find((ticket) => ticket.id === modalTicketId) ?? null,
     [tickets, modalTicketId],
   );
+  const intakeTicket = useMemo(
+    () => tickets.find((ticket) => ticket.id === intakeModalTicketId) ?? null,
+    [tickets, intakeModalTicketId],
+  );
 
   const selectedTicketUi = selectedTicket ? ticketUi[selectedTicket.id] : undefined;
   const modalTicketUi = modalTicket ? ticketUi[modalTicket.id] : undefined;
   const selectedInference = selectedTicket ? inferenceByTicketId[selectedTicket.id] : undefined;
   const modalInference = modalTicket ? inferenceByTicketId[modalTicket.id] : undefined;
+  const intakeInference = intakeTicket ? inferenceByTicketId[intakeTicket.id] : undefined;
   const selectedAuditLog = selectedTicket ? auditLogByTicketId[selectedTicket.id] ?? [] : [];
 
   const isReady = useCallback(
@@ -170,10 +176,17 @@ export default function ContextGuardianDashboard() {
   const modalContributors = modalTicket ? activeContributors(modalTicket) : [];
   const modalCanRenderSolution = canRenderSolutionSummary(modalTicket, modalInference);
   const modalPriorTeam = modalTicket?.priorResolutionTeam ?? [];
+  const intakeReady = intakeTicket ? isReady(intakeTicket) : false;
 
   useEffect(() => {
     setSelectedTeamIds([]);
     setComposeOpen(false);
+  }, [modalTicketId]);
+
+  useEffect(() => {
+    if (modalTicketId) {
+      setIntakeModalTicketId(null);
+    }
   }, [modalTicketId]);
 
   const setStepReviewed = useCallback((ticketId: string, stepId: string, value: boolean) => {
@@ -326,7 +339,10 @@ export default function ContextGuardianDashboard() {
                 className={`event-card ${incomingIds.includes(ticket.id) ? "slide-in-top" : ""} ${
                   ready ? "event-card-ready" : ""
                 } ${selectedTicket?.id === ticket.id ? "event-card-selected" : ""}`}
-                onClick={() => setSelectedTicketId(ticket.id)}
+                onClick={() => {
+                  setSelectedTicketId(ticket.id);
+                  setIntakeModalTicketId(ticket.id);
+                }}
               >
                 <p className="event-id">{ticket.id}</p>
                 <p className="event-raw">{ticket.rawError}</p>
@@ -837,6 +853,115 @@ export default function ContextGuardianDashboard() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {intakeTicket && (
+        <div className="intake-overlay" role="dialog" aria-modal="true">
+          <div className="intake-modal">
+            <header className="blueprint-header">
+              <p className="blueprint-title">Event Intake Snapshot | {intakeTicket.id}</p>
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setIntakeModalTicketId(null)}
+              >
+                Close
+              </button>
+            </header>
+
+            <section className="blueprint-section">
+              <p className="section-tag">Input Summary</p>
+              <div className="summary-time-grid">
+                <p>
+                  <span>Raw Error</span>
+                  <strong>{intakeTicket.rawError}</strong>
+                </p>
+                <p>
+                  <span>Severity</span>
+                  <strong>{intakeTicket.severity}</strong>
+                </p>
+                <p>
+                  <span>Account Type</span>
+                  <strong>{intakeTicket.accountType}</strong>
+                </p>
+                <p>
+                  <span>Product</span>
+                  <strong>{intakeTicket.product}</strong>
+                </p>
+                <p>
+                  <span>Ingested At</span>
+                  <strong>{formatTimestamp(intakeTicket.ingestedAt)}</strong>
+                </p>
+                <p>
+                  <span>Status</span>
+                  <strong>{intakeReady ? "Blueprint Ready" : "Inference Processing"}</strong>
+                </p>
+              </div>
+            </section>
+
+            {intakeInference?.contextSummary && (
+              <section className="blueprint-section">
+                <p className="section-tag">Process Context (Pre-LLM)</p>
+                <div className="summary-time-grid">
+                  <p>
+                    <span>Pipeline Stage</span>
+                    <strong>{intakeInference.contextSummary.pipelineStage}</strong>
+                  </p>
+                  <p>
+                    <span>Attempted Action</span>
+                    <strong>{intakeInference.contextSummary.attemptedAction}</strong>
+                  </p>
+                  <p>
+                    <span>Last Successful State</span>
+                    <strong>{intakeInference.contextSummary.lastSuccessfulState}</strong>
+                  </p>
+                  <p>
+                    <span>Source Institution</span>
+                    <strong>{intakeInference.contextSummary.sourceInstitution}</strong>
+                  </p>
+                </div>
+                <p className="waiting-subtle">
+                  Flags: over-contribution=
+                  {intakeInference.contextSummary.existingFlags.overContributionHistory}; aml=
+                  {intakeInference.contextSummary.existingFlags.amlStatus}; pending reviews=
+                  {intakeInference.contextSummary.existingFlags.pendingReviews.join(", ") || "none"}.
+                </p>
+                {intakeInference.contextSummary.additionalSignals.length > 0 && (
+                  <p className="waiting-subtle">
+                    Additional signals: {intakeInference.contextSummary.additionalSignals.join(", ")}.
+                  </p>
+                )}
+                {intakeInference.contextSummary.operatorNarrative && (
+                  <p className="waiting-subtle">
+                    Operator narrative: {intakeInference.contextSummary.operatorNarrative}
+                  </p>
+                )}
+              </section>
+            )}
+
+            <section className="blueprint-section">
+              <div className="intake-actions">
+                {intakeReady && (
+                  <button
+                    type="button"
+                    className="open-modal-button"
+                    onClick={() => {
+                      setIntakeModalTicketId(null);
+                      setModalTicketId(intakeTicket.id);
+                    }}
+                  >
+                    Open Inference Blueprint
+                  </button>
+                )}
+                {!intakeReady && (
+                  <p className="waiting-subtle">
+                    Context has been captured. Blueprint will open once synthesis completes.
+                  </p>
+                )}
+              </div>
+            </section>
+          </div>
         </div>
       )}
     </main>
