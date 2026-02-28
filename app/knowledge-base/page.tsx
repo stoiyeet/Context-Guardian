@@ -207,7 +207,7 @@ export default function KnowledgeBasePage({ searchParams }: KnowledgeBasePagePro
 
   return (
     <main className="kb-page">
-      <AutoFocusTarget targetId={highlightedMessageId || highlightedEntry || selectedArtifactId} />
+      <AutoFocusTarget targetId={highlightedMessageId || highlightedEntry} />
       <header className="kb-topbar">
         <Link href="/" className="kb-back-main">
           Back To Dashboard
@@ -221,7 +221,7 @@ export default function KnowledgeBasePage({ searchParams }: KnowledgeBasePagePro
             {slackArtifacts.map((artifact) => (
               <Link
                 key={artifact.id}
-                href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
+                href={`/knowledge-base?artifact=${artifact.id}`}
                 className={`kb-artifact-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
               >
                 <span className="kb-mini-badge">SLK</span>
@@ -235,7 +235,7 @@ export default function KnowledgeBasePage({ searchParams }: KnowledgeBasePagePro
             {infraArtifacts.map((artifact) => (
               <Link
                 key={artifact.id}
-                href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
+                href={`/knowledge-base?artifact=${artifact.id}`}
                 className={`kb-artifact-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
               >
                 <span className="kb-mini-badge">INF</span>
@@ -249,7 +249,7 @@ export default function KnowledgeBasePage({ searchParams }: KnowledgeBasePagePro
             {postMortemArtifacts.map((artifact) => (
               <Link
                 key={artifact.id}
-                href={`/knowledge-base?artifact=${artifact.id}#${artifact.id}`}
+                href={`/knowledge-base?artifact=${artifact.id}`}
                 className={`kb-artifact-link ${artifact.id === selectedArtifact.id ? "active" : ""}`}
               >
                 <span className="kb-mini-badge">PM</span>

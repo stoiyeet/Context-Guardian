@@ -42,7 +42,7 @@ function toArtifactHref(documentRef: string): string | null {
   if (documentRef.startsWith("http")) {
     return documentRef;
   }
-  return `/knowledge-base?artifact=${documentRef}#${documentRef}`;
+  return `/knowledge-base?artifact=${documentRef}`;
 }
 
 export default function EvidenceGraph({ ticket, height = 260 }: EvidenceGraphProps) {

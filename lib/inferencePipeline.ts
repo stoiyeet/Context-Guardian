@@ -222,9 +222,9 @@ function toHref(artifact: KnowledgeArtifact): string {
     const messageId = artifact.messages[0]?.id;
     return messageId
       ? `/knowledge-base?artifact=${artifact.id}&message=${messageId}#${messageId}`
-      : `/knowledge-base?artifact=${artifact.id}#${artifact.id}`;
+      : `/knowledge-base?artifact=${artifact.id}`;
   }
-  return `/knowledge-base?artifact=${artifact.id}#${artifact.id}`;
+  return `/knowledge-base?artifact=${artifact.id}`;
 }
 
 function artifactTitle(artifact: KnowledgeArtifact): string {

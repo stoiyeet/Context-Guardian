@@ -13,9 +13,14 @@
   --font-ui: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
   --font-data: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", monospace;
 
-  --kb-panel: #1b1d24;
-  --kb-panel-alt: #151820;
-  --kb-border: #343a46;
+  --kb-bg: #eff2f8;
+  --kb-panel: #ffffff;
+  --kb-panel-alt: #f7f9fd;
+  --kb-border: #d6dce8;
+  --kb-text: #1f2a3b;
+  --kb-subtle: #5f6b82;
+  --kb-accent: #4f6bed;
+  --kb-accent-soft: #e9eeff;
 }
 
 * {
@@ -33,10 +38,6 @@ body {
   background: var(--bg);
   color: var(--text-main);
   font-family: var(--font-ui);
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 28px 28px;
 }
 
 .app-topnav {
@@ -639,11 +640,14 @@ pre {
 }
 
 .kb-page {
-  min-height: 100vh;
+  min-height: calc(100vh - 52px);
+  height: calc(100vh - 52px);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  background: var(--kb-bg);
+  color: var(--kb-text);
 }
 
 .kb-layout {
@@ -652,16 +656,18 @@ pre {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
   gap: 10px;
+  overflow: hidden;
 }
 
 .kb-sidebar {
   border: 1px solid var(--kb-border);
-  background: #171b23;
+  background: var(--kb-panel);
   padding: 10px;
-  overflow: auto;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
 }
 
 .kb-group {
@@ -672,7 +678,7 @@ pre {
 
 .kb-group-title {
   margin: 0;
-  color: #a8b2c2;
+  color: var(--kb-subtle);
   font-family: var(--font-data);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -681,9 +687,9 @@ pre {
 
 .kb-artifact-link {
   text-decoration: none;
-  color: #d8dee8;
-  border: 1px solid #3f4857;
-  background: #121822;
+  color: var(--kb-text);
+  border: 1px solid #d2d9e8;
+  background: #f8faff;
   font-size: 12px;
   padding: 6px 8px;
   display: flex;
@@ -693,14 +699,14 @@ pre {
 
 .kb-artifact-link:hover,
 .kb-artifact-link.active {
-  border-color: var(--amber);
-  background: #161f2a;
+  border-color: var(--kb-accent);
+  background: var(--kb-accent-soft);
 }
 
 .kb-mini-badge {
-  border: 1px solid #556176;
-  background: #1d2632;
-  color: #f0a500;
+  border: 1px solid #b7c4e8;
+  background: #edf2ff;
+  color: var(--kb-accent);
   font-family: var(--font-data);
   font-size: 10px;
   line-height: 1;
@@ -721,8 +727,8 @@ pre {
 
 .kb-back-main {
   text-decoration: none;
-  color: var(--amber);
-  border: 1px solid rgba(240, 165, 0, 0.4);
+  color: var(--kb-accent);
+  border: 1px solid #becbee;
   padding: 6px 10px;
   font-family: var(--font-data);
   font-size: 11px;
@@ -731,7 +737,7 @@ pre {
 }
 
 .kb-back-main:hover {
-  background: var(--amber-soft);
+  background: var(--kb-accent-soft);
 }
 
 .kb-source-tabs {
@@ -742,9 +748,9 @@ pre {
 
 .kb-source-link {
   text-decoration: none;
-  border: 1px solid #424a58;
-  background: #1b1f29;
-  color: #c8ced8;
+  border: 1px solid #d2d9e8;
+  background: #f8faff;
+  color: var(--kb-text);
   padding: 5px 9px;
   font-family: var(--font-data);
   font-size: 11px;
@@ -754,40 +760,44 @@ pre {
 
 .kb-source-link.active,
 .kb-source-link:hover {
-  border-color: var(--amber);
-  color: #ffe4af;
+  border-color: var(--kb-accent);
+  background: var(--kb-accent-soft);
+  color: var(--kb-accent);
 }
 
 .kb-main-single {
   border: 1px solid var(--kb-border);
   background: var(--kb-panel-alt);
-  overflow: auto;
+  overflow-y: auto;
+  min-height: 0;
+  height: 100%;
 }
 
 .kb-article {
-  padding: 16px;
+  padding: 16px 18px;
 }
 
 .kb-highlight-target {
-  border: 1px solid #465063;
-  margin: 12px;
-  background: #181c25;
+  border: 1px solid var(--kb-border);
+  margin: 0;
+  background: var(--kb-panel);
 }
 
 .kb-highlight-target:target {
-  border-color: var(--amber);
-  box-shadow: 0 0 0 1px rgba(240, 165, 0, 0.25) inset;
+  border-color: #b6c5ea;
+  box-shadow: 0 0 0 1px rgba(79, 107, 237, 0.12) inset;
 }
 
 .kb-article-header h1 {
   margin: 8px 0 0;
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.2;
+  color: var(--kb-text);
 }
 
 .kb-chip {
   margin: 0;
-  color: var(--amber);
+  color: var(--kb-accent);
   font-family: var(--font-data);
   font-size: 11px;
   letter-spacing: 0.07em;
@@ -796,19 +806,22 @@ pre {
 
 .kb-subtle {
   margin: 8px 0 0;
-  color: #aeb7c5;
+  color: var(--kb-subtle);
   font-size: 13px;
 }
 
 .kb-slack-app {
   margin-top: 14px;
-  border: 1px solid #414859;
-  background: #1a1d24;
+  border: 1px solid #d2d9e8;
+  background: #ffffff;
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
 }
 
 .kb-slack-topbar {
-  border-bottom: 1px solid #3b4458;
-  background: #1f2430;
+  border-bottom: 1px solid #d8dfea;
+  background: #f4f7ff;
   padding: 10px 12px;
   display: flex;
   justify-content: space-between;
@@ -818,7 +831,7 @@ pre {
 
 .kb-slack-topbar p {
   margin: 0;
-  color: #c8d0dd;
+  color: var(--kb-subtle);
   font-size: 12px;
   display: flex;
   flex-direction: column;
@@ -826,14 +839,15 @@ pre {
 }
 
 .kb-slack-topbar strong {
-  color: #eef1f6;
+  color: var(--kb-text);
 }
 
 .kb-slack-feed-scroll {
-  max-height: 72vh;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
-  background: #1a1d24;
+  background: #ffffff;
 }
 
 .kb-message-group {
@@ -843,10 +857,14 @@ pre {
 .kb-date-divider {
   margin: 0 0 10px;
   font-family: var(--font-data);
-  color: #aeb9cb;
+  color: #708099;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  padding: 3px 0;
 }
 
 .kb-slack-message {
@@ -856,24 +874,26 @@ pre {
   margin-bottom: 10px;
   padding: 7px;
   border: 1px solid transparent;
+  background: #ffffff;
 }
 
 .kb-slack-message:target,
 .kb-target-entry {
-  border-color: var(--amber);
-  background: rgba(240, 165, 0, 0.08);
+  border-color: #9fb3ea;
+  background: #eef3ff;
 }
 
 .kb-avatar {
   width: 34px;
   height: 34px;
-  border: 1px solid #4b5469;
-  background: #292f3c;
-  color: #e8ebf0;
+  border: 1px solid #c5d1ed;
+  background: #dfe8ff;
+  color: #30437b;
   display: grid;
   place-items: center;
   font-family: var(--font-data);
   font-size: 11px;
+  border-radius: 999px;
 }
 
 .kb-slack-message-body {
@@ -889,24 +909,24 @@ pre {
 }
 
 .kb-slack-message-meta .name {
-  color: #f2f4f8;
+  color: #222f43;
   font-weight: 600;
   font-size: 13px;
 }
 
 .kb-slack-message-meta .role {
-  color: #9ea7b8;
+  color: #6d7891;
   font-size: 11px;
 }
 
 .kb-slack-message-meta .time {
-  color: #98a3b5;
+  color: #7a879e;
   font-size: 11px;
 }
 
 .kb-message-text {
   margin: 4px 0 0;
-  color: #e7ebf2;
+  color: #233146;
   line-height: 1.5;
 }
 
@@ -919,14 +939,14 @@ pre {
 
 .kb-jira-meta p {
   margin: 0;
-  border: 1px solid #465063;
-  background: #1a1f29;
+  border: 1px solid #d3dbea;
+  background: #f7f9fd;
   padding: 8px;
 }
 
 .kb-jira-meta span {
   display: block;
-  color: #abb5c6;
+  color: #6f7e97;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -936,7 +956,7 @@ pre {
   display: block;
   margin-top: 5px;
   font-size: 13px;
-  color: #e7ebf2;
+  color: #223149;
 }
 
 .kb-jira-content,
@@ -949,7 +969,7 @@ pre {
 .kb-comments h2,
 .kb-doc-section h2 {
   margin: 0 0 6px;
-  color: #f2c77c;
+  color: #31467e;
   font-size: 16px;
 }
 
@@ -958,23 +978,23 @@ pre {
 .kb-doc-section p {
   margin: 0 0 10px;
   line-height: 1.55;
-  color: #dfe5ef;
+  color: #2c3a4f;
 }
 
 .kb-comment-row {
-  border: 1px solid #465063;
-  background: #1a1f29;
+  border: 1px solid #d3dbea;
+  background: #f9fbff;
   padding: 10px;
   margin-bottom: 8px;
 }
 
 .kb-comment-row:target {
-  border-color: var(--amber);
-  background: rgba(240, 165, 0, 0.08);
+  border-color: #9fb3ea;
+  background: #eef3ff;
 }
 
 .kb-comment-meta {
-  color: #aab4c6;
+  color: #6e7d95;
   font-size: 12px;
   display: flex;
   gap: 8px;
@@ -1259,9 +1279,11 @@ pre {
 
   .kb-page {
     padding: 8px;
+    height: calc(100vh - 52px);
+    min-height: calc(100vh - 52px);
   }
 
   .kb-slack-feed-scroll {
-    max-height: 62vh;
+    max-height: none;
   }
 }
