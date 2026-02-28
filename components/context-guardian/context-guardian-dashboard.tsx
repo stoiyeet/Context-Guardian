@@ -74,10 +74,10 @@ function activeContributors(ticket: OpsTicket): string[] {
 }
 
 function composeGreetingFromRecipients(recipients: MessageRecipient[]): string {
-  if (recipients.length === 0) {
+  if (recipients.length >= 3) {
     return "Hi team,";
   }
-  return `Hi ${recipients.map((recipient) => recipient.name).join(", ")},`;
+  return `Hi ${recipients.map((recipient) => recipient.name.split(" ")[0]).join(" and ")},`;
 }
 
 function withProgrammaticGreeting(
