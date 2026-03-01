@@ -36,6 +36,16 @@ function canRenderSolutionSummary(ticket: OpsTicket | null, meta?: InferenceMeta
   return Boolean(ticket.solutionSummary && ticket.priorResolutionTeam.length > 0);
 }
 
+function hasGroundedEvidenceGraph(ticket: OpsTicket | null, meta?: InferenceMetadata): boolean {
+  if (!ticket) {
+    return false;
+  }
+  if (meta?.unknownPattern) {
+    return false;
+  }
+  return ticket.evidenceNodes.length > 1 && ticket.evidenceEdges.length > 0;
+}
+
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
     year: "numeric",
@@ -193,6 +203,8 @@ export default function ContextGuardianDashboard() {
   const selectedContributors = selectedTicket ? activeContributors(selectedTicket) : [];
   const modalContributors = modalTicket ? activeContributors(modalTicket) : [];
   const modalCanRenderSolution = canRenderSolutionSummary(modalTicket, modalInference);
+  const selectedHasGraph = hasGroundedEvidenceGraph(selectedTicket, selectedInference);
+  const modalHasGraph = hasGroundedEvidenceGraph(modalTicket, modalInference);
   const modalPriorTeam = modalTicket?.priorResolutionTeam ?? [];
   const intakeReady = intakeTicket ? isReady(intakeTicket) : false;
 
@@ -460,19 +472,27 @@ export default function ContextGuardianDashboard() {
 
             <section className="summary-block">
               <p className="section-tag">Evidence Graph</p>
-              <p className="evidence-graph-hint">
-                Click a node to open the linked Slack thread, infra ticket, or post-mortem.
-              </p>
-              <EvidenceGraph ticket={selectedTicket} height={250} />
-              {selectedInference?.similarityRationale.length ? (
-                <ol className="resolution-steps">
-                  {selectedInference.similarityRationale.map((reason, index) => (
-                    <li key={`${selectedTicket.id}-reason-${index + 1}`}>
-                      <span>{reason}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
+              {selectedHasGraph ? (
+                <>
+                  <p className="evidence-graph-hint">
+                    Click a node to open the linked Slack thread, infra ticket, or post-mortem.
+                  </p>
+                  <EvidenceGraph ticket={selectedTicket} height={250} />
+                  {selectedInference?.similarityRationale.length ? (
+                    <ol className="resolution-steps">
+                      {selectedInference.similarityRationale.map((reason, index) => (
+                        <li key={`${selectedTicket.id}-reason-${index + 1}`}>
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </>
+              ) : (
+                <p className="waiting-subtle">
+                  No grounded organizational evidence graph is available for this ticket yet.
+                </p>
+              )}
 
               <button
                 type="button"
@@ -673,19 +693,27 @@ export default function ContextGuardianDashboard() {
 
             <section className="blueprint-section">
               <p className="section-tag">3. Evidence Graph</p>
-              <p className="evidence-graph-hint">
-                Click a node to open the linked evidence instance.
-              </p>
-              <EvidenceGraph ticket={modalTicket} height={300} />
-              {modalInference?.similarityRationale.length ? (
-                <ol className="resolution-steps">
-                  {modalInference.similarityRationale.map((reason, index) => (
-                    <li key={`${modalTicket.id}-reason-${index + 1}`}>
-                      <span>{reason}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
+              {modalHasGraph ? (
+                <>
+                  <p className="evidence-graph-hint">
+                    Click a node to open the linked evidence instance.
+                  </p>
+                  <EvidenceGraph ticket={modalTicket} height={300} />
+                  {modalInference?.similarityRationale.length ? (
+                    <ol className="resolution-steps">
+                      {modalInference.similarityRationale.map((reason, index) => (
+                        <li key={`${modalTicket.id}-reason-${index + 1}`}>
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </>
+              ) : (
+                <p className="waiting-subtle">
+                  No grounded organizational evidence graph is available for this ticket yet.
+                </p>
+              )}
             </section>
 
             {modalCanRenderSolution && modalTicket && (

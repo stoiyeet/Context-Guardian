@@ -1284,6 +1284,10 @@ pre {
   line-height: 1.4;
 }
 
+.synth-highlight-note {
+  color: #8fdaab;
+}
+
 .synth-header button {
   border: 1px solid #3f4a57;
   background: #1a2129;
@@ -1329,6 +1333,12 @@ pre {
   border: 1px solid #2f3843;
   background: #11161b;
   padding: 10px;
+}
+
+.synth-metrics article.synth-new,
+.synth-list article.synth-new {
+  border-color: #3f8f66;
+  background: #13211a;
 }
 
 .synth-metrics span {
@@ -1402,6 +1412,19 @@ pre {
   margin-top: 2px;
   color: #97a2b2;
   font-size: 11px;
+  font-family: var(--font-data);
+}
+
+.synth-new-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid #4fa773;
+  color: #9ce8ba;
+  font-size: 10px;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   font-family: var(--font-data);
 }
 
