@@ -84,27 +84,6 @@ let memorySnapshot: SynthState | null = null;
 let memorySeenUpdateAt: string | null = null;
 let memoryHighlight: SynthHighlightState = EMPTY_HIGHLIGHT;
 
-function confidenceMapChanged(
-  left: Record<string, number>,
-  right: Record<string, number>,
-): boolean {
-  const leftKeys = Object.keys(left).sort();
-  const rightKeys = Object.keys(right).sort();
-  if (leftKeys.length !== rightKeys.length) {
-    return true;
-  }
-  for (let index = 0; index < leftKeys.length; index += 1) {
-    const key = leftKeys[index];
-    if (key !== rightKeys[index]) {
-      return true;
-    }
-    if (left[key] !== right[key]) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function diffSynthState(current: SynthState, previous: SynthState): SynthHighlightState {
   const prevPatterns = new Map(previous.patterns.map((pattern) => [pattern.patternId, pattern]));
   const prevSmes = new Map(previous.smeRoutingTable.map((sme) => [sme.personId, sme]));
@@ -113,55 +92,24 @@ function diffSynthState(current: SynthState, previous: SynthState): SynthHighlig
   );
 
   const patternIds = current.patterns
-    .filter((pattern) => {
-      const prev = prevPatterns.get(pattern.patternId);
-      if (!prev) {
-        return true;
-      }
-      return (
-        prev.occurrenceCount !== pattern.occurrenceCount ||
-        prev.lastSeen !== pattern.lastSeen ||
-        prev.confidenceScore !== pattern.confidenceScore
-      );
-    })
+    .filter((pattern) => !prevPatterns.has(pattern.patternId))
     .map((pattern) => pattern.patternId);
 
   const smeIds = current.smeRoutingTable
-    .filter((sme) => {
-      const prev = prevSmes.get(sme.personId);
-      if (!prev) {
-        return true;
-      }
-      return (
-        prev.lastActiveDate !== sme.lastActiveDate ||
-        prev.recentInvolvements[0] !== sme.recentInvolvements[0] ||
-        confidenceMapChanged(prev.confidenceByDomain, sme.confidenceByDomain)
-      );
-    })
+    .filter((sme) => !prevSmes.has(sme.personId))
     .map((sme) => sme.personId);
 
   const correlationIds = current.correlationMap
-    .filter((correlation) => {
-      const prev = prevCorrelations.get(correlation.correlationId);
-      if (!prev) {
-        return true;
-      }
-      return (
-        prev.observedCount !== correlation.observedCount ||
-        prev.confidenceScore !== correlation.confidenceScore ||
-        prev.supportingTicketIds.length !== correlation.supportingTicketIds.length
-      );
-    })
+    .filter((correlation) => !prevCorrelations.has(correlation.correlationId))
     .map((correlation) => correlation.correlationId);
 
   const changedMetrics = {
-    artifacts: current.sourceArtifactCount !== previous.sourceArtifactCount,
+    artifacts: current.sourceArtifactCount > previous.sourceArtifactCount,
     learned:
-      (current.learnedTicketIds?.length ?? 0) !== (previous.learnedTicketIds?.length ?? 0),
-    patterns: patternIds.length > 0 || current.patterns.length !== previous.patterns.length,
-    correlations:
-      correlationIds.length > 0 || current.correlationMap.length !== previous.correlationMap.length,
-    smes: smeIds.length > 0 || current.smeRoutingTable.length !== previous.smeRoutingTable.length,
+      (current.learnedTicketIds?.length ?? 0) > (previous.learnedTicketIds?.length ?? 0),
+    patterns: patternIds.length > 0,
+    correlations: correlationIds.length > 0,
+    smes: smeIds.length > 0,
   };
 
   const active =
@@ -177,22 +125,6 @@ function diffSynthState(current: SynthState, previous: SynthState): SynthHighlig
     patternIds,
     smeIds,
     correlationIds,
-  };
-}
-
-function fallbackHighlightFromState(state: SynthState): SynthHighlightState {
-  return {
-    active: true,
-    changedMetrics: {
-      artifacts: true,
-      learned: true,
-      patterns: true,
-      correlations: true,
-      smes: true,
-    },
-    patternIds: state.patterns.slice(0, 4).map((pattern) => pattern.patternId),
-    smeIds: state.smeRoutingTable.slice(0, 4).map((sme) => sme.personId),
-    correlationIds: state.correlationMap.slice(0, 4).map((item) => item.correlationId),
   };
 }
 
@@ -267,10 +199,8 @@ export default function SynthesizedKnowledgePage() {
           return current;
         }
         if (!previous) {
-          const fallback = fallbackHighlightFromState(payload);
-          memoryHighlight = fallback;
           memorySeenUpdateAt = payload.lastUpdatedAt;
-          return fallback;
+          return current;
         }
         if (previous.lastUpdatedAt === payload.lastUpdatedAt) {
           return current;
@@ -365,7 +295,7 @@ export default function SynthesizedKnowledgePage() {
       {!state ? null : (
         <>
           <section className="synth-metrics">
-            <article className={highlight.active ? "synth-new" : ""}>
+            <article>
               <span>Last Updated</span>
               <strong>{stamp(state.lastUpdatedAt)}</strong>
             </article>
@@ -418,7 +348,7 @@ export default function SynthesizedKnowledgePage() {
                       {pct(pattern.confidenceScore)}
                     </span>
                     {highlight.active && highlightedPatternIds.has(pattern.patternId) && (
-                      <em className="synth-new-badge">Updated</em>
+                      <em className="synth-new-badge">New</em>
                     )}
                   </p>
                   <p>{pattern.description}</p>
@@ -454,7 +384,7 @@ export default function SynthesizedKnowledgePage() {
                         {sme.role} | {sme.status} | recency {pct(recency)} | priority {priority}
                       </span>
                       {highlight.active && highlightedSmeIds.has(sme.personId) && (
-                        <em className="synth-new-badge">Updated</em>
+                        <em className="synth-new-badge">New</em>
                       )}
                     </p>
                     <p>
@@ -503,7 +433,7 @@ export default function SynthesizedKnowledgePage() {
                       {pct(correlation.confidenceScore)}
                     </span>
                     {highlight.active && highlightedCorrelationIds.has(correlation.correlationId) && (
-                      <em className="synth-new-badge">Updated</em>
+                      <em className="synth-new-badge">New</em>
                     )}
                   </p>
                   <p>{correlation.description}</p>
