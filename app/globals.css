@@ -1361,6 +1361,13 @@ pre {
   color: #f0a500;
 }
 
+.synth-section-caption {
+  margin: 6px 0 0;
+  color: #9aa6b5;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .synth-list {
   margin-top: 10px;
   display: flex;
@@ -1396,6 +1403,22 @@ pre {
   color: #97a2b2;
   font-size: 11px;
   font-family: var(--font-data);
+}
+
+.synth-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -2px 0 6px;
+}
+
+.synth-tag {
+  border: 1px solid #3a4552;
+  background: #161d25;
+  color: #dbe3ee;
+  font-size: 11px;
+  font-family: var(--font-data);
+  padding: 3px 6px;
 }
 
 .slide-in-top {

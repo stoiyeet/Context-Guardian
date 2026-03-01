@@ -68,6 +68,37 @@ function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function formatDomain(domain: string): string {
+  return domain.replace(/_/g, " ");
+}
+
+function domainStrengthLabel(score: number): string {
+  if (score >= 0.9) {
+    return "Core";
+  }
+  if (score >= 0.72) {
+    return "Strong";
+  }
+  if (score >= 0.5) {
+    return "Supporting";
+  }
+  return "Emerging";
+}
+
+function routePriority(topDomainScore: number, recencyScore: number): string {
+  const score = 0.62 * topDomainScore + 0.38 * recencyScore;
+  if (score >= 0.82) {
+    return "Route Now";
+  }
+  if (score >= 0.64) {
+    return "Route Soon";
+  }
+  if (score >= 0.46) {
+    return "Backup";
+  }
+  return "Monitor";
+}
+
 export default function SynthesizedKnowledgePage() {
   const [state, setState] = useState<SynthState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +182,7 @@ export default function SynthesizedKnowledgePage() {
             </article>
             <article>
               <span>Artifacts Analyzed</span>
-              <strong>{state.sourceArtifactCount}</strong>
+              <strong>{state.sourceArtifactCount} total (bootstrap + learned)</strong>
             </article>
             <article>
               <span>Resolved Tickets Learned</span>
@@ -167,6 +198,9 @@ export default function SynthesizedKnowledgePage() {
 
           <section className="synth-section">
             <h2>Pattern Library</h2>
+            <p className="synth-section-caption">
+              Value: compresses recurring incidents into reusable diagnosis and resolution templates.
+            </p>
             <div className="synth-list">
               {topPatterns.map((pattern) => (
                 <article key={pattern.patternId}>
@@ -187,27 +221,40 @@ export default function SynthesizedKnowledgePage() {
 
           <section className="synth-section">
             <h2>SME Recency Routing</h2>
+            <p className="synth-section-caption">
+              Value: routes by current, demonstrated involvement instead of historical ownership.
+            </p>
             <div className="synth-list">
               {topSmes.map((sme) => {
                 const domains = Object.entries(sme.confidenceByDomain)
                   .sort((a, b) => b[1] - a[1])
                   .slice(0, 3);
                 const recency = recencyById.get(sme.personId)?.relevanceScore ?? 0;
+                const topDomainScore = domains[0]?.[1] ?? 0;
+                const priority = routePriority(topDomainScore, recency);
 
                 return (
                   <article key={sme.personId}>
                     <p>
                       <strong>{sme.name}</strong>
                       <span>
-                        {sme.role} | {sme.status} | recency {pct(recency)}
+                        {sme.role} | {sme.status} | recency {pct(recency)} | priority {priority}
                       </span>
                     </p>
                     <p>
-                      Top domains:{" "}
-                      {domains.length > 0
-                        ? domains.map(([domain, score]) => `${domain} (${pct(score)})`).join(", ")
-                        : "n/a"}
+                      Top domains:
                     </p>
+                    <div className="synth-tag-row">
+                      {domains.length > 0 ? (
+                        domains.map(([domain, score]) => (
+                          <span key={`${sme.personId}-${domain}`} className="synth-tag">
+                            {formatDomain(domain)} - {domainStrengthLabel(score)}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="synth-tag">n/a</span>
+                      )}
+                    </div>
                     <p>Recent involvements: {sme.recentInvolvements.slice(0, 4).join(", ") || "none"}</p>
                     <p>Last active: {stamp(sme.lastActiveDate)}</p>
                   </article>
@@ -218,6 +265,9 @@ export default function SynthesizedKnowledgePage() {
 
           <section className="synth-section">
             <h2>Correlation Map</h2>
+            <p className="synth-section-caption">
+              Value: exposes hidden system couplings so operators can triage root causes faster.
+            </p>
             <div className="synth-list">
               {state.correlationMap.slice(0, 10).map((correlation) => (
                 <article key={correlation.correlationId}>
