@@ -66,8 +66,6 @@ type SynthHighlightState = {
   correlationIds: string[];
 };
 
-const SNAPSHOT_STORAGE_KEY = "context-guardian:synth:snapshot:v1";
-const SEEN_UPDATE_STORAGE_KEY = "context-guardian:synth:seen-update:v1";
 const EMPTY_HIGHLIGHT: SynthHighlightState = {
   active: false,
   changedMetrics: {
@@ -82,57 +80,9 @@ const EMPTY_HIGHLIGHT: SynthHighlightState = {
   correlationIds: [],
 };
 
-function hasSessionStorage(): boolean {
-  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
-}
-
-function readSnapshotFromStorage(): SynthState | null {
-  if (!hasSessionStorage()) {
-    return null;
-  }
-  try {
-    const raw = window.sessionStorage.getItem(SNAPSHOT_STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    return JSON.parse(raw) as SynthState;
-  } catch {
-    return null;
-  }
-}
-
-function writeSnapshotToStorage(snapshot: SynthState): void {
-  if (!hasSessionStorage()) {
-    return;
-  }
-  try {
-    window.sessionStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // Ignore storage failures in demo mode.
-  }
-}
-
-function readSeenUpdate(): string | null {
-  if (!hasSessionStorage()) {
-    return null;
-  }
-  try {
-    return window.sessionStorage.getItem(SEEN_UPDATE_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeSeenUpdate(lastUpdatedAt: string): void {
-  if (!hasSessionStorage()) {
-    return;
-  }
-  try {
-    window.sessionStorage.setItem(SEEN_UPDATE_STORAGE_KEY, lastUpdatedAt);
-  } catch {
-    // Ignore storage failures in demo mode.
-  }
-}
+let memorySnapshot: SynthState | null = null;
+let memorySeenUpdateAt: string | null = null;
+let memoryHighlight: SynthHighlightState = EMPTY_HIGHLIGHT;
 
 function confidenceMapChanged(
   left: Record<string, number>,
@@ -230,6 +180,22 @@ function diffSynthState(current: SynthState, previous: SynthState): SynthHighlig
   };
 }
 
+function fallbackHighlightFromState(state: SynthState): SynthHighlightState {
+  return {
+    active: true,
+    changedMetrics: {
+      artifacts: true,
+      learned: true,
+      patterns: true,
+      correlations: true,
+      smes: true,
+    },
+    patternIds: state.patterns.slice(0, 4).map((pattern) => pattern.patternId),
+    smeIds: state.smeRoutingTable.slice(0, 4).map((sme) => sme.personId),
+    correlationIds: state.correlationMap.slice(0, 4).map((item) => item.correlationId),
+  };
+}
+
 function stamp(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
     year: "numeric",
@@ -281,7 +247,7 @@ export default function SynthesizedKnowledgePage() {
   const [state, setState] = useState<SynthState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [highlight, setHighlight] = useState<SynthHighlightState>(EMPTY_HIGHLIGHT);
+  const [highlight, setHighlight] = useState<SynthHighlightState>(memoryHighlight);
 
   const loadState = useCallback(async () => {
     try {
@@ -290,26 +256,35 @@ export default function SynthesizedKnowledgePage() {
         throw new Error(`Failed to load synthesized knowledge (${response.status}).`);
       }
       const payload = (await response.json()) as SynthState;
-      const previous = readSnapshotFromStorage();
-      const seenUpdate = readSeenUpdate();
+      const previous = memorySnapshot;
+      const seenUpdate = memorySeenUpdateAt;
       setHighlight((current) => {
         if (current.active) {
+          memoryHighlight = current;
+          return current;
+        }
+        if (seenUpdate === payload.lastUpdatedAt) {
           return current;
         }
         if (!previous) {
-          return current;
+          const fallback = fallbackHighlightFromState(payload);
+          memoryHighlight = fallback;
+          memorySeenUpdateAt = payload.lastUpdatedAt;
+          return fallback;
         }
-        if (previous.lastUpdatedAt === payload.lastUpdatedAt || seenUpdate === payload.lastUpdatedAt) {
+        if (previous.lastUpdatedAt === payload.lastUpdatedAt) {
           return current;
         }
         const diff = diffSynthState(payload, previous);
         if (diff.active) {
-          writeSeenUpdate(payload.lastUpdatedAt);
+          memoryHighlight = diff;
+          memorySeenUpdateAt = payload.lastUpdatedAt;
           return diff;
         }
+        memorySeenUpdateAt = payload.lastUpdatedAt;
         return current;
       });
-      writeSnapshotToStorage(payload);
+      memorySnapshot = payload;
       setState(payload);
       setError(null);
     } catch (err) {
@@ -359,9 +334,8 @@ export default function SynthesizedKnowledgePage() {
   );
 
   const refreshNow = useCallback(async () => {
-    if (state?.lastUpdatedAt) {
-      writeSeenUpdate(state.lastUpdatedAt);
-    }
+    memoryHighlight = EMPTY_HIGHLIGHT;
+    memorySeenUpdateAt = state?.lastUpdatedAt ?? memorySeenUpdateAt;
     setHighlight(EMPTY_HIGHLIGHT);
     await loadState();
   }, [loadState, state?.lastUpdatedAt]);
