@@ -1,6 +1,4 @@
 import { MongoClient, ServerApiVersion } from "mongodb";
-export const runtime = "nodejs";
-
 
 const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGODB_DB_NAME ?? "context_guardian";

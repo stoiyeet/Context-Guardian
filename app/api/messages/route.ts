@@ -7,6 +7,7 @@ import {
 import type { MessageRecipient } from "@/lib/messageTypes";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 function invalid(message: string) {
   return NextResponse.json(
