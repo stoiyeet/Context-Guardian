@@ -16,6 +16,7 @@ import {
   searchVectorIndex,
   type VectorRecord,
 } from "@/lib/vectorUtils";
+import { readSystemState, writeSystemState } from "@/lib/systemStateStore";
 import type {
   BlueprintType,
   IngestPayload,
@@ -78,7 +79,9 @@ type RetrievedArtifact = {
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const SYNTHESIS_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o";
 const EMBEDDING_FILE = path.join(process.cwd(), "data", "knowledgeEmbeddings.json");
+const EMBEDDING_STATE_KEY = "knowledge-embeddings-cache-v1";
 const UNKNOWN_DIAGNOSIS = "No organizational precedent found for this error pattern.";
+const MIN_CITATION_SCORE = 0.5;
 const LEXICAL_STOPWORDS = new Set([
   "with",
   "from",
@@ -254,12 +257,21 @@ async function readCachedEmbeddings(): Promise<{
   model: string;
   rows: Array<{ id: string; vector: number[] }>;
 } | null> {
+  const mongoCached = await readSystemState<{
+    model: string;
+    rows: Array<{ id: string; vector: number[] }>;
+  }>(EMBEDDING_STATE_KEY);
+  if (mongoCached?.model && Array.isArray(mongoCached.rows)) {
+    return mongoCached;
+  }
+
   try {
     const raw = await fs.readFile(EMBEDDING_FILE, "utf8");
     const parsed = JSON.parse(raw) as {
       model: string;
       rows: Array<{ id: string; vector: number[] }>;
     };
+    void writeSystemState(EMBEDDING_STATE_KEY, parsed);
     return parsed;
   } catch {
     return null;
@@ -270,6 +282,11 @@ async function writeCachedEmbeddings(payload: {
   model: string;
   rows: Array<{ id: string; vector: number[] }>;
 }): Promise<void> {
+  const storedInMongo = await writeSystemState(EMBEDDING_STATE_KEY, payload);
+  if (storedInMongo) {
+    return;
+  }
+
   await fs.mkdir(path.dirname(EMBEDDING_FILE), { recursive: true });
   await fs.writeFile(EMBEDDING_FILE, JSON.stringify(payload, null, 2), "utf8");
 }
@@ -492,14 +509,17 @@ async function retrieveArtifacts(
 }
 
 function citationBundle(retrieved: RetrievedArtifact[]): EvidenceCitation[] {
-  return retrieved.slice(0, 8).map((item) => ({
-    artifactId: item.document.id,
-    label: item.document.title,
-    citation: item.document.citation,
-    connectionType: item.connectionType,
-    score: clamp01(item.score),
-    href: item.document.href,
-  }));
+  return retrieved
+    .filter((item) => item.score > MIN_CITATION_SCORE)
+    .slice(0, 8)
+    .map((item) => ({
+      artifactId: item.document.id,
+      label: item.document.title,
+      citation: item.document.citation,
+      connectionType: item.connectionType,
+      score: clamp01(item.score),
+      href: item.document.href,
+    }));
 }
 
 function buildSimilarityRationale(
@@ -1101,10 +1121,12 @@ function toBlueprintFromSynthesis(
     llm?.diagnosis ??
     (unknownPattern
       ? UNKNOWN_DIAGNOSIS
-      : `This ticket most closely matches prior incidents tied to ${citations
-          .slice(0, 2)
-          .map((citation) => citation.citation)
-          .join(" and ")}, which indicate the same operational failure pattern.`);
+      : citations.length > 0
+        ? `This ticket most closely matches prior incidents tied to ${citations
+            .slice(0, 2)
+            .map((citation) => citation.citation)
+            .join(" and ")}, which indicate the same operational failure pattern.`
+        : "This ticket aligns with synthesized organizational patterns, but no raw artifact citation exceeded the grounded-evidence threshold.");
   const diagnosisWithSpecificity = unknownPattern
     ? diagnosis
     : ensureDiagnosisSpecificity(diagnosis, input, citations);
@@ -1175,7 +1197,8 @@ export async function runBlueprintInference(
     // Step 3 + 4: semantic retrieval with multi-intent queries.
     const retrieval = await retrieveArtifacts(input);
     const retrieved = retrieval.merged;
-    const topRetrievedScore = retrieved[0]?.score ?? 0;
+    const groundedRetrieved = retrieved.filter((item) => item.score > MIN_CITATION_SCORE);
+    const topRetrievedScore = groundedRetrieved[0]?.score ?? 0;
     const topPatternScore = synthResult.patterns[0]?.score ?? 0;
     const errorClass = rawErrorClass(input.rawError);
     const recognizedRawErrorSignal = [
@@ -1192,12 +1215,12 @@ export async function runBlueprintInference(
       "queue",
       "drip",
     ].some((token) => input.rawError.toLowerCase().includes(token));
-    const errorClassReferenced = retrieved.some((item) => {
+    const errorClassReferenced = groundedRetrieved.some((item) => {
       const text = item.document.searchText.toUpperCase();
       return text.includes(input.rawError.toUpperCase()) || text.includes(errorClass);
     });
     const noPrecedent =
-      (retrieved.length === 0 && synthResult.patterns.length === 0) ||
+      (groundedRetrieved.length === 0 && synthResult.patterns.length === 0) ||
       (((topRetrievedScore < 0.18 && topPatternScore < 0.35 && !recognizedRawErrorSignal) ||
         (!recognizedRawErrorSignal &&
           !errorClassReferenced &&
@@ -1208,19 +1231,19 @@ export async function runBlueprintInference(
     const llm = await synthesizeWithLlm(
       input,
       synthResult,
-      retrieved,
+      groundedRetrieved,
       synthState,
       noPrecedent,
     );
 
     const unknownPattern = noPrecedent || Boolean(llm?.unknownPattern);
-    const citations = citationBundle(retrieved);
-    const similarityRationale = buildSimilarityRationale(input, citations, retrieved);
+    const citations = citationBundle(groundedRetrieved);
+    const similarityRationale = buildSimilarityRationale(input, citations, groundedRetrieved);
     const assembled = toBlueprintFromSynthesis(
       input,
       synthState,
       synthResult,
-      retrieved,
+      groundedRetrieved,
       citations,
       llm,
       unknownPattern,

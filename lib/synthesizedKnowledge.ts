@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { listKnowledgeArtifacts, type KnowledgeArtifact } from "@/lib/knowledgeBase";
 import { getOpenAIClient, hasOpenAIKey } from "@/lib/openaiClient";
+import { readSystemState, writeSystemState } from "@/lib/systemStateStore";
 import type { OpsTicket, TicketBlueprint } from "@/lib/types";
 
 export type PatternLibraryEntry = {
@@ -91,6 +92,7 @@ type QueryContext = {
 
 const SYNTH_DIR = path.join(process.cwd(), "data");
 const SYNTH_FILE = path.join(SYNTH_DIR, "synthesizedKnowledge.json");
+const SYNTH_STATE_KEY = "synthesized-knowledge-state-v1";
 const SYNTHESIS_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o";
 const SYNTH_STATE_VERSION = 2;
 
@@ -737,6 +739,11 @@ async function maybeRefineWithLlm(
 }
 
 async function persistState(state: SynthesizedKnowledgeState): Promise<void> {
+  const storedInMongo = await writeSystemState(SYNTH_STATE_KEY, state);
+  if (storedInMongo) {
+    return;
+  }
+
   await fs.mkdir(SYNTH_DIR, { recursive: true });
   await fs.writeFile(SYNTH_FILE, JSON.stringify(state, null, 2), "utf8");
 }
@@ -777,6 +784,21 @@ export async function loadSynthesizedKnowledge(): Promise<SynthesizedKnowledgeSt
 
   loadingPromise = (async () => {
     try {
+      const mongoParsed = await readSystemState<SynthesizedKnowledgeState>(SYNTH_STATE_KEY);
+      if (mongoParsed) {
+        if (mongoParsed.version !== SYNTH_STATE_VERSION) {
+          return buildSynthesizedKnowledge();
+        }
+        const normalizedFromMongo: SynthesizedKnowledgeState = {
+          ...mongoParsed,
+          learnedTicketIds: Array.isArray(mongoParsed.learnedTicketIds)
+            ? mongoParsed.learnedTicketIds
+            : [],
+        };
+        cachedState = normalizedFromMongo;
+        return normalizedFromMongo;
+      }
+
       const raw = await fs.readFile(SYNTH_FILE, "utf8");
       const parsed = JSON.parse(raw) as SynthesizedKnowledgeState;
       if (parsed.version !== SYNTH_STATE_VERSION) {
@@ -788,6 +810,7 @@ export async function loadSynthesizedKnowledge(): Promise<SynthesizedKnowledgeSt
           ? parsed.learnedTicketIds
           : [],
       };
+      void writeSystemState(SYNTH_STATE_KEY, normalized);
       cachedState = normalized;
       return normalized;
     } catch {

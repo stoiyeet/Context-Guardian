@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import EvidenceGraph from "@/components/context-guardian/evidence-graph";
 import {
+  clearPersistedEventSnapshot,
   subscribeToEventStream,
   type EventSnapshot,
   type TicketSnapshot,
@@ -121,6 +122,7 @@ export default function ContextGuardianDashboard() {
   const [composeRecipients, setComposeRecipients] = useState<MessageRecipient[]>([]);
   const [composeBody, setComposeBody] = useState("");
   const [copied, setCopied] = useState(false);
+  const [clearingStream, setClearingStream] = useState(false);
 
   const applySnapshot = useCallback((snapshot: EventSnapshot) => {
     setTickets((previous) => {
@@ -277,6 +279,37 @@ export default function ContextGuardianDashboard() {
     }
   }, [tickets]);
 
+  const clearStream = useCallback(async () => {
+    if (clearingStream) {
+      return;
+    }
+
+    setClearingStream(true);
+    try {
+      const response = await fetch("/api/events/clear", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        return;
+      }
+
+      clearPersistedEventSnapshot();
+      setTickets([]);
+      setTicketUi({});
+      setInferenceByTicketId({});
+      setAuditLogByTicketId({});
+      setSelectedTicketId(null);
+      setIntakeModalTicketId(null);
+      setModalTicketId(null);
+      setSelectedTeamIds([]);
+      setComposeOpen(false);
+    } catch {
+      // Keep current state on clear failure.
+    } finally {
+      setClearingStream(false);
+    }
+  }, [clearingStream]);
+
   const copyPayload = useCallback(async (payload: string) => {
     await navigator.clipboard.writeText(payload);
     setCopied(true);
@@ -356,6 +389,14 @@ export default function ContextGuardianDashboard() {
       <section className="panel panel-left">
         <div className="panel-header">
           <p className="panel-eyebrow">Live Event Stream</p>
+          <button
+            type="button"
+            className="panel-clear-button"
+            onClick={() => void clearStream()}
+            disabled={clearingStream}
+          >
+            {clearingStream ? "Clearing..." : "Clear Event Stream"}
+          </button>
         </div>
 
         <div className="stream-scroll">

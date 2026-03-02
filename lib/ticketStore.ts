@@ -17,6 +17,7 @@ let tickets: OpsTicket[] = [];
 let inferenceMetaByTicketId: Record<string, InferenceMetadata> = {};
 let auditLogByTicketId: Record<string, AuditLogEntry[]> = {};
 let nextTicketNumber = 9_001;
+let streamGeneration = 0;
 
 function nextId(providedTicketId?: string): string {
   if (providedTicketId) {
@@ -193,6 +194,7 @@ export async function ingestTicket(payload: IngestPayload): Promise<OpsTicket> {
   const ticketId = nextId(payload.ticketId);
   const ingestedAt = new Date().toISOString();
   const inferenceStartedAt = Date.now();
+  const generationAtIngest = streamGeneration;
   const processingUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const ticketScopedBlueprint = withTicketScopedIds(
     ticketId,
@@ -223,10 +225,16 @@ export async function ingestTicket(payload: IngestPayload): Promise<OpsTicket> {
         ticketId,
         ingestedAt,
       });
+      if (generationAtIngest !== streamGeneration) {
+        return;
+      }
       const elapsedMs = Date.now() - inferenceStartedAt;
       const minVisibleProcessingMs = 2200;
       if (elapsedMs < minVisibleProcessingMs) {
         await new Promise((resolve) => setTimeout(resolve, minVisibleProcessingMs - elapsedMs));
+      }
+      if (generationAtIngest !== streamGeneration) {
+        return;
       }
       const blueprint = applyPayloadOverrides(inferred.blueprint, payload);
       const finalScoped = withTicketScopedIds(ticketId, blueprint);
@@ -248,6 +256,9 @@ export async function ingestTicket(payload: IngestPayload): Promise<OpsTicket> {
         addAuditLog(ticketId, "Unknown pattern state flagged. Routed for broad SME triage.");
       }
     } catch (error) {
+      if (generationAtIngest !== streamGeneration) {
+        return;
+      }
       const message = error instanceof Error ? error.message : "Unknown inference failure";
       tickets = tickets.map((ticket) =>
         ticket.id === ticketId
@@ -294,10 +305,18 @@ export function isBlueprintReady(ticket: OpsTicket): boolean {
 }
 
 export function resetTicketStore(): void {
+  streamGeneration += 1;
   tickets = [];
   inferenceMetaByTicketId = {};
   auditLogByTicketId = {};
   nextTicketNumber = 9_001;
+}
+
+export function clearEventStream(): void {
+  streamGeneration += 1;
+  tickets = [];
+  inferenceMetaByTicketId = {};
+  auditLogByTicketId = {};
 }
 
 // PHASE 2: replace with semantic/vector retrieval from a vector database.

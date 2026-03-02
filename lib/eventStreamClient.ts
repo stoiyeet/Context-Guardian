@@ -55,6 +55,18 @@ function writePersistedSnapshot(snapshot: EventSnapshot): void {
   }
 }
 
+export function clearPersistedEventSnapshot(): void {
+  if (!hasSessionStorage()) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+  } catch {
+    // Ignore session storage failures.
+  }
+}
+
 function mergeTickets(live: TicketSnapshot[], persisted: TicketSnapshot[]): TicketSnapshot[] {
   const byId = new Map<string, TicketSnapshot>();
 
