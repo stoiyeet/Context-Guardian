@@ -400,7 +400,71 @@ export default function ContextGuardianDashboard() {
         </div>
 
         <div className="stream-scroll">
-          {tickets.length === 0 && <div className="stream-empty">Awaiting HTTP ingest events.</div>}
+          {tickets.length === 0 && (
+            <div className="stream-empty">
+              <p>Awaiting HTTP ingest events.</p>
+
+              <div className="example-box">
+                <p className="example-title">Example command</p>
+                <pre className="example-pre">
+                  {`curl -X POST https://context-guardian.vercel.app/api/ingest \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "ticketId":"OPS-9500",
+    "rawError":"ERR_739_CUSIP_MISMATCH",
+    "accountType":"Registered - TFSA",
+    "product":"ATON Outbound Transfer",
+    "severity":"High",
+    "context":{
+      "pipelineStage":"bridge-handoff-validation",
+      "attemptedAction":"bridge was normalizing CUSIP before CAS request",
+      "lastSuccessfulState":"validator accepted packet and transfer was queued",
+      "sourceInstitution":"Rogers Direct",
+      "existingFlags":{
+        "overContributionHistory":"none",
+        "amlStatus":"clear",
+        "pendingReviews":[]
+      },
+      "additionalSignals":[
+        "transfer_mid_flight",
+        "custodian_identifier_migration"
+      ],
+      "operatorNarrative":"Looks like a mid-flight fail, not account setup."
+    }
+  }'`}
+                </pre>
+
+                <pre className="example-pre">
+                  {`curl -X POST https://context-guardian.vercel.app/api/ingest \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "ticketId": "OPS-9303",
+    "rawError": "ERR_214_ACCOUNT_CLASSIFICATION_MISMATCH",
+    "accountType": "FHSA",
+    "product": "Registered Account Transfer",
+    "severity": "High",
+    "context": {
+      "pipelineStage": "Compliance gate before authorization",
+      "attemptedAction": "Applying TFSA-oriented resolution workflow to inbound FHSA transfer",
+      "lastSuccessfulState": "Custodian validation succeeded and holdings were staged in ledger",
+      "sourceInstitution": "Questrade",
+      "existingFlags": {
+        "overContributionHistory": "possible",
+        "amlStatus": "clear",
+        "pendingReviews": ["fhsa_policy_review"]
+      },
+      "additionalSignals": [
+        "Operator checklist references TFSA handling, no FHSA branch specified",
+        "CRA reporting requirement mentioned in an older compliance note",
+        "Ticket stalled between Ops and Compliance ownership queues"
+      ],
+      "operatorNarrative": "Team treated this like TFSA initially; unsure if FHSA requires separate reporting sequence."
+    }
+  }'`}
+                </pre>
+              </div>
+            </div>
+          )}
 
           {tickets.map((ticket) => {
             const ready = isReady(ticket);
@@ -409,9 +473,9 @@ export default function ContextGuardianDashboard() {
               <button
                 key={ticket.id}
                 type="button"
-                className={`event-card ${incomingIds.includes(ticket.id) ? "slide-in-top" : ""} ${
-                  ready ? "event-card-ready" : ""
-                } ${selectedTicket?.id === ticket.id ? "event-card-selected" : ""}`}
+                className={`event-card ${incomingIds.includes(ticket.id) ? "slide-in-top" : ""
+                  } ${ready ? "event-card-ready" : ""} ${selectedTicket?.id === ticket.id ? "event-card-selected" : ""
+                  }`}
                 onClick={() => {
                   setSelectedTicketId(ticket.id);
                   setIntakeModalTicketId(ticket.id);
@@ -419,7 +483,9 @@ export default function ContextGuardianDashboard() {
               >
                 <p className="event-id">{ticket.id}</p>
                 <p className="event-raw">{ticket.rawError}</p>
-                <p className="event-ingested">{formatTimestamp(ticket.ingestedAt)}</p>
+                <p className="event-ingested">
+                  {formatTimestamp(ticket.ingestedAt)}
+                </p>
 
                 <div className="event-status-row">
                   {!ready ? (
