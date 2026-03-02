@@ -1,12 +1,5 @@
-import { getMongoDb, hasMongoConfig } from "@/lib/mongo";
-
-type SystemStateDoc = {
-  _id: string;
-  payload: unknown;
-  updatedAt: string;
-};
-
-const COLLECTION_NAME = "system_state";
+import { connectMongo, hasMongoConfig } from "@/lib/mongo";
+import { SystemStateModel } from "@/models/SystemState";
 
 export async function readSystemState<T>(key: string): Promise<T | null> {
   if (!hasMongoConfig()) {
@@ -14,8 +7,8 @@ export async function readSystemState<T>(key: string): Promise<T | null> {
   }
 
   try {
-    const db = await getMongoDb();
-    const doc = await db.collection<SystemStateDoc>(COLLECTION_NAME).findOne({ _id: key });
+    await connectMongo();
+    const doc = await SystemStateModel.findById(key).lean().exec();
     if (!doc) {
       return null;
     }
@@ -31,8 +24,8 @@ export async function writeSystemState(key: string, payload: unknown): Promise<b
   }
 
   try {
-    const db = await getMongoDb();
-    await db.collection<SystemStateDoc>(COLLECTION_NAME).updateOne(
+    await connectMongo();
+    await SystemStateModel.updateOne(
       { _id: key },
       {
         $set: {
@@ -41,7 +34,7 @@ export async function writeSystemState(key: string, payload: unknown): Promise<b
         },
       },
       { upsert: true },
-    );
+    ).exec();
     return true;
   } catch {
     return false;

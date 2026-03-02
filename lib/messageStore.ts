@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { ObjectId } from "mongodb";
-import { getMongoDb, hasMongoConfig } from "@/lib/mongo";
+import { connectMongo, hasMongoConfig } from "@/lib/mongo";
+import { MessageThreadModel } from "@/models/MessageThread";
 import type {
   InternalMessage,
   MessageRecipient,
@@ -8,7 +8,7 @@ import type {
 } from "@/lib/messageTypes";
 
 type ThreadDoc = {
-  _id: ObjectId;
+  _id: unknown;
   sessionId: string;
   recipientKey: string;
   recipients: MessageRecipient[];
@@ -37,7 +37,7 @@ function recipientKeyFor(recipients: MessageRecipient[]): string {
 
 function toThread(doc: ThreadDoc): MessageThread {
   return {
-    id: doc._id.toString(),
+    id: String(doc._id),
     sessionId: doc.sessionId,
     recipientKey: doc.recipientKey,
     recipients: doc.recipients,
@@ -48,13 +48,14 @@ function toThread(doc: ThreadDoc): MessageThread {
 }
 
 async function listThreadsMongo(sessionId: string): Promise<MessageThread[]> {
-  const db = await getMongoDb();
-  const rows = (await db
-    .collection<ThreadDoc>("message_threads")
+  await connectMongo();
+  const rows = (await MessageThreadModel
     .find({ sessionId })
     .sort({ updatedAt: -1 })
-    .toArray()) as ThreadDoc[];
-  return rows.map(toThread);
+    .lean()
+    .exec()) as ThreadDoc[];
+
+  return rows.map((row) => toThread(row));
 }
 
 async function sendMessageMongo(
@@ -63,7 +64,7 @@ async function sendMessageMongo(
   body: string,
   senderName: string,
 ): Promise<MessageThread> {
-  const db = await getMongoDb();
+  await connectMongo();
   const now = new Date().toISOString();
   const normalizedRecipients = normalizeRecipients(recipients);
   const recipientKey = recipientKeyFor(normalizedRecipients);
@@ -74,7 +75,7 @@ async function sendMessageMongo(
     sentAt: now,
   };
 
-  await db.collection<ThreadDoc>("message_threads").findOneAndUpdate(
+  const persisted = (await MessageThreadModel.findOneAndUpdate(
     {
       sessionId,
       recipientKey,
@@ -95,14 +96,12 @@ async function sendMessageMongo(
     },
     {
       upsert: true,
-      returnDocument: "after",
+      new: true,
+      setDefaultsOnInsert: true,
     },
-  );
-
-  const persisted = await db.collection<ThreadDoc>("message_threads").findOne({
-    sessionId,
-    recipientKey,
-  });
+  )
+    .lean()
+    .exec()) as ThreadDoc | null;
 
   if (!persisted) {
     throw new Error("Failed to persist message thread.");

@@ -7,11 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:messages": "node scripts/seed-messages.mjs"
+    "seed:messages": "node scripts/seed-messages.mjs",
+    "push:system-state": "node scripts/push-system-state-to-mongo.mjs"
   },
   "dependencies": {
-    "dotenv": "^17.3.1",
     "mongodb": "^7.1.0",
+    "mongoose": "^8.15.0",
     "next": "^14.2.35",
     "openai": "^6.25.0",
     "react": "^18.3.1",
